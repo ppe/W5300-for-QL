@@ -1,0 +1,141 @@
+ERR_NO   equ      -6                ; SB error "not open"
+         in       mdv3_w5300const_asm
+init_w5  movea.l  #iobase,a1        ; A1 points to beginning of memory mapped IO space into W5300
+w5300rst ori.w    #MR_RST,MR(a1)    ; Reset W5300 through the mode register
+; After reset, we need to wait for the W5300 to synchronize PLL
+; According to documentation, this takes a maximum of 10ms
+; @ 7.5 MHz 10 ms == 75000 clocks
+; subq instruction operating on D register == 12 clocks
+; bne instruction when branch taken ==  18 clocks
+; Decrement, test and branch == 30 clocks => Need 2500 of these for a 10ms wait
+         move.l   #2500,d0
+tloop    subq.l   #1,d0
+         bne      tloop
+; Three step initialization process. Refer to W5300 datasheet chapter 5.1
+; Step 1 *************
+; 1. Mode register defaults after reset suit our purposes so no changes necessary
+; 2. Host interrupts: default is no interrupts - use that for now
+;
+; Step 2 *************
+; >>> 1. Basic network information
+; Set source hardware address to a locally administered address
+         move.l   #$02000042,SHAR(a1)
+         move.w   #$4242,SHAR+4(a1)
+; Set gateway address
+         move.l   #$C0A80001,GAR(a1)         ; 192.168.0.1
+; Set subnet mask
+         move.l   #$FFFFFF00,SUBR(a1)        ; 255.255.255.0
+; Set source IP
+         move.l   #$C0A8000A,SIPR(a1)        ; 192.168.0.10
+; >>> 2. Set retransmission time period and retry count
+; Set RTO to 1 second (unit in RTR is 0.1 ms)
+; 1s RTO is based on recommendation found in http://www.sce.carleton.ca/~nseddigh/publications/thesis-16.pdf
+         move.w   #10000,d0
+         move.w   d0,RTR(a1)
+; Keep the default of 8 retransmissions before giving up and closing the socket
+; >>> 3. Allocate internal memory to sockets
+; Keep the default 4 kb RX and 4kb TX buffer per socket
+         move.b   d1,d0
+         bsr      s_init
+; Prevent scheduling by entering supervisor mode
+         trap     #0
+         move     #0,sr
+exitok   moveq    #0,d0
+exit     rts
+; Initialize a socket
+; d1.b = socket #(0-7)
+; Check that socket number is between 0 and 7 and set the base address for accessing socket registers
+s_init   cmpi.w   #7,d1
+         bls      snro_ok
+         moveq    #-1,d0
+         rts
+;
+; Find base address, address of socket register bank returned in a2
+;
+snro_ok  bsr      sr_base
+;
+; Set socket mode to TCP
+         andi.w   #S_MR_PM,S_MR(a2)
+         ori.w    #S_MR_TCP,S_MR(a2)
+; Set source port through a simplistic algorithm... source port == FFnn where nn = 8 bit representation of socket number
+         addi.w   #$ff00,d1
+         move.w   d1,S_PORTR(a2)
+; Send an "open" command
+         move.w   #SC_OPEN,S_CR(a2)
+; Verify that the socket is in SOCK_INIT state
+         bsr      s_getst
+         move.w   S_SSR(a2),d0
+         cmpi.b   #SS_INIT,d0
+         beq      s_dest
+         moveq    #-1,d0
+         rts
+; Set the destination address and port
+s_dest   move.l   #$C0A80001,S_DIPR(a2)      ; 192.168.0.1
+         move.w   #80,S_DPORTR(a2)
+; Connect command
+         move.w   #SC_CONN,S_CR(a2)
+; Wait for the socket to move either to "closed" (due to ARP or TCP timeout) or "established" state
+s_c_res  move.w   S_SSR(a2),d0
+         beq      s_clsd                     ; State "0" means socket has been closed due to timeout
+         cmpi.w   #SS_ESTD,d0
+         bne      s_c_res
+; Socket connection is now established
+
+; Now wait for the socket to move to "initialized" state
+         moveq    #0,d0
+         rts
+s_clsd   moveq    #ERR_NO,d0                     ; -6 = channel not open
+         rts
+; Subroutine to get socket state, socket register base address passed in a2
+; Returns current socket state in d0
+s_getst  move.w   S_SSR(a2),d0
+         cmpi.b   #SS_INIT,d0
+         rts
+
+; Find base address for a socket's registers and return it in a2
+; Parameters:
+;        d1.b     number of socket (0-7)
+; Returns:
+;        a2.l     base address of register bank for socket number passed in d1
+; Corrupts:
+;        d7
+
+sr_base  movea.l  #iobase+S_BASE,a2
+         move.b   d1,d7
+         mulu     #S_SIZE,d7
+         adda.w   d7,a2
+         rts
+;;
+;;        w_rdbuf reads number of bytes from socket n to buffer
+;;        parameters:
+;;        d1.b     number of socket (0-7)
+;;        d2.w     number of bytes to read CORRUPTED
+;;        a1       pointer to buffer area. Needs to be a multiple of two bytes since data is read
+;;                 from W5300 in word sized operations
+;;        corrupts:
+;;        a2,a3
+;;        d2
+;;
+;
+; We are reading in word sized numbers so the number of read operations is
+; number of bytes div 2 (+1 if odd number of bytes)
+; since we are looping with dbf d2 will contain number of loops - 1
+;
+w_rdbuf  asr.w    #1,d2
+         bcs      wrb_odd
+         subq.w   #1,d2
+; Get the base address of this socket's registers into a2
+wrb_odd  bsr      sr_base
+         movea.l  a1,a3
+w_rdloop move.w   S_RXFIFO(a2),(a3)+
+         dbf      d2,w_rdloop
+         rts
+;
+w_wrbuf  asr.w    #1,d2
+         bcs      wwb_odd
+         subq.w   #1,d2
+wwb_odd  bsr      sr_base
+         mmovea.l a1,a3
+w_wloop  move.w   (a3)+,S_TXFIFO(a2)
+         dbf      d2,w_wloop
+         rts

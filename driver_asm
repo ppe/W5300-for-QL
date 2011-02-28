@@ -1,0 +1,85 @@
+; Set up the serio pointers area
+         lea      ptrs,a0
+         lea      io_ready,a2
+         move.l   a2,(a0)+
+         lea      fetch,a2
+         move.l   a2,(a0)+
+         lea      send,a2
+         move.l   a2,(a0)
+; Set up the driver linkage (standard version) block
+         lea      lnkblk+$1C,a0
+         lea      IO,a2
+         move.l   a2,(a0)+
+         lea      open,a2
+         move.l   a2,(a0)+
+         lea      close,a2
+         move.l   a2,(a0)
+         lea      lnkblk+$18,a0
+         moveq    #mt_liod,d0        ; link in this driver
+         trap     #1
+         bne      bad_exit
+         bsr      init_w5
+         bra      io_ready
+lnkblk   ds.l     $40
+; Insert W5300 code
+         in       mdv3_w5300_asm
+open     lea      $28(a3),a3
+         movea.w  io_name,a4
+         jsr      (a4)
+         bra.s    bad_exit
+         bra.s    bad_exit
+         bra.s    ok
+         dc.w     3,'QTC'           ; device length & name
+         dc.w     5                 ; # of parameters
+         dc.w     ' _',127
+         dc.w     ' .',0
+         dc.w     ' .',0
+         dc.w     ' .',1
+         dc.w     ' :',80
+ok       move.l   #$40,d1           ; reserve space for the channel definition block
+         movea.w  mm_alchp,a4
+         move.l   a0,-(a7)          ; Save the A0 from entry to open just in case the allocation fails
+         jsr      (a4)
+         bne      ra0ext
+         addq.l   #4,a7             ; Ditch the saved A0, we won't need it any more
+         move.l   #$20000,$22(a0)    ; Set up the screen buffer as the memory area this driver writes/reads
+; Now copy the parsed parameters from the driver linkage block to this channel's definition block
+; Ip address is changed from word sized numbers to byte sized numbers
+copyip   move.w   (a3)+,d1
+         move.b   d1,$18(a0,d0.w)
+         addq.b   #1,d0
+         cmpi.b   #4,d0
+         blt      copyip
+; Copy the port number
+         move.w   (a3)+,$1c(a0)
+         bra      io_ready
+ra0ext   move.l   (a7)+,a0          ; Restore A0 and exit
+         rts
+close    movea.w  mm_rechp,a4
+         jmp      (a4)
+IO       movea.w  io_serio,a4        ; Deal with trap #3 . .
+         jsr      (a4)               ; . . calls by IO.SERIO
+*
+* These three pointers are to:
+*
+*         io ready - here does nothing
+*         fetch a byte to D1
+*         send a byte from D1
+*
+* NOTE D1 has to end up containing the current position of the file
+*      which is at $22(A0)
+*
+ptrs     ds.l     3
+         rts
+*
+fetch
+         movea.l   $22(a0),a1
+         move.b    (a1),d1            ; Set the next byte to D1.B
+fetch_1  addq.l    #1,$22(a0)         ; Increment the current address
+io_ready moveq     #0,d0
+bad_exit rts
+*
+send
+         movea.l   $22(a0),a1
+         move.b    d1,(a1)
+         bra       fetch_1
