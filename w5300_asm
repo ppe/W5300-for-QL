@@ -135,7 +135,7 @@ w_wrbuf  asr.w    #1,d2
          bcs      wwb_odd
          subq.w   #1,d2
 wwb_odd  bsr      sr_base
-         mmovea.l a1,a3
+         movea.l  a1,a3
 w_wloop  move.w   (a3)+,S_TXFIFO(a2)
          dbf      d2,w_wloop
          rts

@@ -18,11 +18,12 @@
          moveq    #mt_liod,d0        ; link in this driver
          trap     #1
          bne      bad_exit
-         bsr      init_w5
+;         bsr      init_w5
          bra      io_ready
 lnkblk   ds.l     $40
+udpname  dc.w     3,'UDP'
 ; Insert W5300 code
-         in       mdv3_w5300_asm
+;         in       mdv3_w5300_asm
 open     lea      $28(a3),a3
          movea.w  io_name,a4
          jsr      (a4)

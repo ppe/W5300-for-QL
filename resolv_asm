@@ -26,6 +26,13 @@ insert_trailer
          move.w   #CLASS_IN,dns_qhl+4(a2,d1.w)        ; Class Internet
 fill_header
          move.w   #0,(a2)                             ; Id for query. TODO: fill in ID of current job
+         move.w   #1,4(a2)                            ; Number of questions
+         move.w   #0,6(a2)                            ; Number of answers
+         move.w   #0,8(a2)                            ; Number of authority resource records
+         move.w   #0,10(a2)                           ; Number of additional resource records
+set_header_flags
+         move.w   #0,2(a2)                            ; Reset all flags
+         bset     #0,2(a2)                            ; Recursion desired
 convert_address
          move.b   #0,dns_qhl+1(a2,d1.w)               ; Terminate the converted string with a null
          tst.w    d1                                  ; If length of string is zero then we are done
