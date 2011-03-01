@@ -1,0 +1,82 @@
+iobase   equ      $19000
+MR       equ      $0                ; Mode register
+IR       equ      $002              ; Interrupt register address
+IMR      equ      $004              ; Interrupt mask register
+SHAR     equ      $008              ; Source hardware address register (6 bytes)
+GAR      equ      $010              ; Gateway address register
+SUBR     equ      $014              ; Subnet mask register
+SIPR     equ      $018              ; Source IP address register
+RTR      equ      $01c              ; Retransmission retry count register
+TMSR0    equ      $020              ; Transmit memory size register of socket 0
+TMSR1    equ      $021              ; Transmit memory size register of socket 1
+TMSR2    equ      $022              ; Transmit memory size register of socket 2
+TMSR3    equ      $023              ; Transmit memory size register of socket 3
+TMSR4    equ      $024              ; Transmit memory size register of socket 4
+TMSR5    equ      $025              ; Transmit memory size register of socket 5
+TMSR6    equ      $026              ; Transmit memory size register of socket 6
+TMSR7    equ      $027              ; Transmit memory size register of socket 7
+RMSR0    equ      $028              ; Receive memory size register of socket 0
+RMSR1    equ      $029              ; Receive memory size register of socket 1
+RMSR2    equ      $02A              ; Receive memory size register of socket 2
+RMSR3    equ      $02B              ; Receive memory size register of socket 3
+RMSR4    equ      $02C              ; Receive memory size register of socket 4
+RMSR5    equ      $02D              ; Receive memory size register of socket 5
+RMSR6    equ      $02E              ; Receive memory size register of socket 6
+RMSR7    equ      $02F              ; Receive memory size register of socket 7
+MTYPER   equ      $030              ; Memory block type register
+UIPR     equ      $046              ; Unreachable ip address register
+UPORTR   equ      $04c              ; Unreachable port number register
+FMTUR    equ      $04e              ; Fragment MTU register
+P0_BRDYR equ      $060              ; Pin BRDY0 configure register
+P0_BDR   equ      $062              ; Pin BRDY0 buffer depth register
+P1_BRDYR equ      $064              ; Pin BRDY1 configure register
+P1_BDR   equ      $066              ; Pin BRDY1 buffer depth register
+P2_BRDYR equ      $068              ; Pin BRDY2 configure register
+P2_BDR   equ      $06A              ; Pin BRDY2 buffer depth register
+P3_BRDYR equ      $06C              ; Pin BRDY3 configure register
+P3_BDR   equ      $06E              ; Pin BRDY3 buffer depth register
+IDR      equ      $0FE              ; W5300 id register
+; Socket registers: base + offset notation
+S_BASE   equ      $200              ; Base address for socket registers
+S_SIZE   equ      $40               ; Size of one socket register block
+S0_BASE  equ      $200              ; Base address for socket 0 addressing
+S1_BASE  equ      $240              ; Base address for socket 1 addressing
+S2_BASE  equ      $280              ; Base address for socket 2 addressing
+S3_BASE  equ      $2C0              ; Base address for socket 3 addressing
+S4_BASE  equ      $300              ; Base address for socket 4 addressing
+S5_BASE  equ      $340              ; Base address for socket 5 addressing
+S6_BASE  equ      $380              ; Base address for socket 6 addressing
+S7_BASE  equ      $3C0              ; Base address for socket 7 addressing
+; Socket register offsets
+S_MR     equ      $00               ; Socket mode register
+S_CR     equ      $02               ; Socket command register
+S_IMR    equ      $04               ; Socket interrupt mask register
+S_IR     equ      $06               ; Socket interrupt register
+S_SSR    equ      $08               ; Socket status register
+S_PORTR  equ      $0A               ; Socket source port register
+S_DHAR   equ      $0C               ; Socket destination hardware address register
+S_DPORTR equ      $12               ; Socket destination port register
+S_DIPR   equ      $14               ; Socket destinatio IP address register
+S_MSSR   equ      $18               ; Socket maximum segment size register
+S_KPALVR equ      $1A               ; Socket keepalive time register
+S_PROTOR equ      $1B               ; Socket protocol number register
+S_TOSR   equ      $1C               ; Socket TOS register
+S_TTLR   equ      $1E               ; Socket TTL register
+S_TX_WS  equ      $20               ; Socket TX write size register
+S_TX_FSR equ      $24               ; Socket TX free size register
+S_RXRSR  equ      $28               ; Socket RX receive size register
+S_RXRSR2 equ      $2A               ; Socket RX receive size register 2nd word
+S_FRAGR  equ      $2C               ; Socket FLAG register
+S_TXFIFO equ      $2E               ; Socket TX FIFO register
+S_RXFIFO equ      $30               ; Socket RX FIFO register
+; Register manipulation bits
+MR_RST   equ      $80               ; Mode register reset
+S_MR_PM  equ      $FFF0             ; Mask for resetting the socket mode register protocol bits
+S_MR_TCP equ      1                 ; TCP protocol for socket mode register
+; Socket commands
+SC_OPEN  equ      1
+SC_CONN  equ      4
+; Socket states
+SS_CLSD  equ      0                 ; SOCK_CLOSED state
+SS_INIT  equ      $13               ; SOCK_INIT state
+SS_ESTD  equ      $17               ; SOCK_ESTABLISHED state
