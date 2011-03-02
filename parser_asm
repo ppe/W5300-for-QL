@@ -31,7 +31,7 @@ rdbyte   moveq    #0,d2                               ; Accumulator for the numb
 rdbskip  cmp.w    d4,d3
          bge      check_loop_len
          move.b   0(a1,d3.w),d1
-         cmpi.b   #$30,d1
+         cmpi.b   #'0',d1
          bne      rdb_leadzero_end
          addq.w   #1,d5
          addq.w   #1,d3
@@ -66,4 +66,33 @@ check_final_char
 not_byte moveq    #-1,d0
          rts
 is_byte  moveq    #0,d0
+         rts
+; Read an ip v4 address
+; a1 = pointer to start of string
+; d4.w = length of string
+read_ip_address
+         moveq    #2,d6                               ; Read the first three octets
+read_ip_loop
+         bsr      read_byte_and_update_regs
+         tst.b    d0
+         bne      not_ip
+         cmpi.b   #'.',(a1)+
+         bne      not_ip
+         subq.w   #1,d4                               ; Update remaining length
+         dbf      d6,read_ip_loop
+         bsr      read_byte_and_update_regs
+         tst.b    d0
+         bne      not_ip
+         rts
+not_ip   moveq    #-1,d0
+         rts
+read_byte_and_update_regs
+         bsr      rdbyte
+         tst.b    d0
+         bne      abort_read
+         asl.l    #8,d7
+         move.b   d2,d7                               ; d2 is the accumulated byte value from 'rdbyte'
+         adda.w   d3,a1                               ; d3 from 'rdbyte' shows how many chars were read
+         sub.w    d3,d4
+abort_read
          rts

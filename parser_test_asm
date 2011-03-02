@@ -1,9 +1,84 @@
+         bsr      read_ip_test
+         tst.b    d0
+         bne      exit
          bsr      runtests
          tst.b    d0
          bne      exit
          bsr      run_byte_tests
 exit     rts
          in       mdv3_parser_asm
+;
+; Test for ip address read logic
+ip1      dc.w     7,'1.2.3.4'
+ip2      dc.w     15,'001.002.003.004'
+ip3      dc.w     13,'1.2.3.4foobar'
+ip4      dc.w     15,'255.255.255.255'
+noip1    dc.w     2,'1.'
+noip2    dc.w     6,'1.2.3.'
+noip3    dc.w     9,'1.2.3.256'
+noip4    dc.w     7,'1.2.3.x'
+noip5    dc.w     0
+read_ip_test
+         lea      ip1,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         bne      ip_test_err
+         cmpi.l   #$1020304,d7
+         bne      ip_test_err
+         lea      ip2,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         bne      ip_test_err
+         cmpi.l   #$1020304,d7
+         bne      ip_test_err
+         lea      ip3,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         bne      ip_test_err
+         cmpi.l   #$1020304,d7
+         bne      ip_test_err
+         lea      ip4,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         bne      ip_test_err
+         cmpi.l   #$ffffffff,d7
+         bne      ip_test_err
+         lea      noip1,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         beq      ip_test_err
+         lea      noip2,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         beq      ip_test_err
+         lea      noip3,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         beq      ip_test_err
+         lea      noip4,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         beq      ip_test_err
+         lea      noip5,a1
+         move.w   (a1)+,d4
+         bsr      read_ip_address
+         tst.b    d0
+         beq      ip_test_err
+ip_test_ok
+         moveq    #0,d0
+         rts
+ip_test_err
+         moveq    #-1,d0
+         rts
+
 ;
 ; Constants for testing
 udpname  dc.w     'UDP'
