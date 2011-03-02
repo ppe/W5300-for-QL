@@ -1,5 +1,8 @@
          bsr      runtests
-         rts
+         tst.b    d0
+         bne      exit
+         bsr      run_byte_tests
+exit     rts
 cmpic    moveq    #1,d0
          moveq    #2,d1
          move.w   (a2),d2
@@ -24,6 +27,52 @@ isnum    moveq    #1,d0
          bgt      notnum
 numok    moveq    #0,d0
 notnum   rts
+; a1 = pointer to start of string
+; d4.w = length of string
+rdbyte   moveq    #0,d2                               ; Accumulator for the number
+         moveq    #0,d3                               ; loop counter
+         moveq    #0,d5                               ; Number of leading zeros
+; handle leading zeros
+rdbskip  cmp.w    d4,d3
+         bge      check_loop_len
+         move.b   0(a1,d3.w),d1
+         cmpi.b   #$30,d1
+         bne      rdb_leadzero_end
+         addq.w   #1,d5
+         addq.w   #1,d3
+         bra      rdbskip
+rdb_leadzero_end
+         addq.w   #2,d5
+rdbloop  cmp.w    d4,d3
+         bge      check_loop_len
+         cmp.w    d5,d3                               ; Number of leading zeros + 2, i.e. a maximum of three significant digits
+         bgt      check_final_char
+         move.b   0(a1,d3.w),d1
+         bsr      isnum
+         tst.b    d0
+         bne      check_loop_len
+         sub.b    #$30,d1
+         ext.w    d1
+         mulu     #10,d2
+         add.w    d1,d2
+         addq.w   #1,d3
+         bra      rdbloop
+check_loop_len
+         tst.w    d3
+         beq      not_byte
+         cmpi.w   #255,d2
+         bgt      not_byte
+         bra      is_byte
+check_final_char
+         move.b   0(a1,d3.w),d1
+         bsr      isnum
+         tst.b    d0
+         bne      is_byte
+not_byte moveq    #-1,d0
+         rts
+is_byte  moveq    #0,d0
+         rts
+;
 ; Constants for testing
 udpname  dc.w     'UDP'
 udp2     dc.w     4,'udp_'
@@ -105,4 +154,140 @@ runtests lea      udpname,a1
 ok       moveq    #0,d0
          rts
 err      moveq    #-1,d0
+         rts
+;
+; byte value read routine test
+;
+btrue1   dc.w     1,'7'
+btrue2   dc.w     3,'255'
+btrue3   dc.w     4,'254.'
+btrue4   dc.w     4,'1abc'
+btrue5   dc.w     1,'0'
+btrue6   dc.w     6,'000000'
+btrue7   dc.w     3,'001'
+btrue8   dc.w     6,'000123'
+btrue9   dc.w     7,'000210.'
+bfalse1  dc.w     0
+bfalse2  dc.w     1,'x'
+bfalse3  dc.w     4,'abcd'
+bfalse4  dc.w     5,'abcde'
+bfalse5  dc.w     5,'12345'
+bfalse6  dc.w     3,'256'
+bfalse7  dc.w     6,'000345'
+bfalse8  dc.w     6,'001234'
+run_byte_tests
+         lea      btrue1,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #7,d2
+         bne      bt_err
+         lea      btrue2,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #255,d2
+         bne      bt_err
+         lea      btrue3,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #254,d2
+         bne      bt_err
+         lea      btrue4,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #1,d2
+         bne      bt_err
+         lea      btrue5,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #0,d2
+         bne      bt_err
+         lea      btrue6,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #0,d2
+         bne      bt_err
+         lea      btrue7,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #1,d2
+         bne      bt_err
+         lea      btrue8,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #123,d2
+         bne      bt_err
+         lea      btrue9,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         bne      bt_err
+         cmpi.b   #210,d2
+         bne      bt_err
+         lea      bfalse1,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         lea      bfalse2,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         lea      bfalse3,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         lea      bfalse4,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         lea      bfalse5,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         cmpi.b   #123,d2
+         bne      bt_err
+         lea      bfalse6,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         cmpi.w   #256,d2
+         bne      bt_err
+         lea      bfalse7,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         cmpi.w   #345,d2
+         bne      bt_err
+         lea      bfalse8,a1
+         move.w   (a1)+,d4
+         bsr      rdbyte
+         tst.b    d0
+         beq      bt_err
+         cmpi.b   #123,d2
+         bne      bt_err
+bt_ok    moveq    #0,d0
+         rts
+bt_err   moveq    #-1,d0
          rts
