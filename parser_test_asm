@@ -1,3 +1,6 @@
+         bsr      read_number_test
+         tst.b    d0
+         bne      exit
          bsr      read_ip_test
          tst.b    d0
          bne      exit
@@ -7,6 +10,62 @@
          bsr      run_byte_tests
 exit     rts
          in       mdv3_parser_asm
+;
+;
+num1     dc.w     5,'65535'
+num2     dc.w     1,'0'
+num3     dc.w     3,'007'
+nonum1   dc.w     0
+nonum2   dc.w     1,'a'
+nonum3   dc.w     2,'x0'
+read_number_test
+         lea      num1,a1
+         move.w   (a1)+,d4
+         bsr      rdnum
+         tst.b    d0
+         bne      rdnum_test_err
+         cmpi.w   #5,d3
+         bne      rdnum_test_err
+         cmpi.w   #65535,d2
+         bne      rdnum_test_err
+         lea      num2,a1
+         move.w   (a1)+,d4
+         bsr      rdnum
+         tst.b    d0
+         bne      rdnum_test_err
+         cmpi.w   #1,d3
+         bne      rdnum_test_err
+         cmpi.w   #0,d2
+         bne      rdnum_test_err
+         lea      num3,a1
+         move.w   (a1)+,d4
+         bsr      rdnum
+         tst.b    d0
+         bne      rdnum_test_err
+         cmpi.w   #3,d3
+         bne      rdnum_test_err
+         cmpi.w   #7,d2
+         bne      rdnum_test_err
+         lea      nonum1,a1
+         move.w   (a1)+,d4
+         bsr      rdnum
+         tst.b    d0
+         beq      rdnum_test_err
+         lea      nonum2,a1
+         move.w   (a1)+,d4
+         bsr      rdnum
+         tst.b    d0
+         beq      rdnum_test_err
+         lea      nonum3,a1
+         move.w   (a1)+,d4
+         bsr      rdnum
+         tst.b    d0
+         beq      rdnum_test_err
+         moveq    #0,d0
+         rts
+rdnum_test_err
+         moveq    #-1,d0
+         rts
 ;
 ; Test for ip address read logic
 ip1      dc.w     7,'1.2.3.4'
@@ -271,8 +330,6 @@ run_byte_tests
          bsr      rdbyte
          tst.b    d0
          beq      bt_err
-         cmpi.b   #123,d2
-         bne      bt_err
          lea      bfalse6,a1
          move.w   (a1)+,d4
          bsr      rdbyte
@@ -292,8 +349,6 @@ run_byte_tests
          bsr      rdbyte
          tst.b    d0
          beq      bt_err
-         cmpi.b   #123,d2
-         bne      bt_err
 bt_ok    moveq    #0,d0
          rts
 bt_err   moveq    #-1,d0

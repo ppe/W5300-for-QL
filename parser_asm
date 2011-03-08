@@ -22,50 +22,43 @@ isnum    moveq    #1,d0
          bgt      notnum
 numok    moveq    #0,d0
 notnum   rts
+;
+;
 ; a1 = pointer to start of string
 ; d4.w = length of string
-rdbyte   moveq    #0,d2                               ; Accumulator for the number
+rdnum    moveq    #0,d2                               ; Accumulator for the number
          moveq    #0,d3                               ; loop counter
-         moveq    #0,d5                               ; Number of leading zeros
-; handle leading zeros
-rdbskip  cmp.w    d4,d3
-         bge      check_loop_len
-         move.b   0(a1,d3.w),d1
-         cmpi.b   #'0',d1
-         bne      rdb_leadzero_end
-         addq.w   #1,d5
-         addq.w   #1,d3
-         bra      rdbskip
-rdb_leadzero_end
-         addq.w   #2,d5
-rdbloop  cmp.w    d4,d3
-         bge      check_loop_len
-         cmp.w    d5,d3                               ; Number of leading zeros + 2, i.e. a maximum of three significant digits
-         bgt      check_final_char
+rdnloop  cmp.w    d4,d3
+         bge      rdldone
          move.b   0(a1,d3.w),d1
          bsr      isnum
          tst.b    d0
-         bne      check_loop_len
+         bne      rdldone
          sub.b    #$30,d1
          ext.w    d1
          mulu     #10,d2
          add.w    d1,d2
          addq.w   #1,d3
-         bra      rdbloop
-check_loop_len
-         tst.w    d3
-         beq      not_byte
-         cmpi.w   #255,d2
-         bgt      not_byte
-         bra      is_byte
-check_final_char
-         move.b   0(a1,d3.w),d1
-         bsr      isnum
-         tst.b    d0
-         bne      is_byte
-not_byte moveq    #-1,d0
+         bra      rdnloop
+rdldone  tst.w    d3
+         beq      no_number_read
+         moveq    #0,d0
          rts
-is_byte  moveq    #0,d0
+no_number_read
+         moveq    #-1,d0
+         rts
+;
+rdbyte   bsr      rdnum
+         tst.b    d0
+         bne      rdb_exit_err
+         cmpi.w   #255,d2
+         bgt      rdb_exit_err
+         cmpi.w   #0,d2
+         blt      rdb_exit_err
+         moveq    #0,d0
+         rts
+rdb_exit_err
+         moveq    #-1,d0
          rts
 ; Read an ip v4 address
 ; a1 = pointer to start of string
