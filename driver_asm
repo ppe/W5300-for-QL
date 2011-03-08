@@ -21,22 +21,15 @@
 ;         bsr      init_w5
          bra      io_ready
 lnkblk   ds.l     $40
-udpname  dc.w     3,'UDP'
+udpname  dc.w     'UDP'
 ; Insert W5300 code
 ;         in       mdv3_w5300_asm
-open     lea      $28(a3),a3
-         movea.w  io_name,a4
-         jsr      (a4)
-         bra.s    bad_exit
-         bra.s    bad_exit
-         bra.s    ok
-         dc.w     3,'QTC'           ; device length & name
-         dc.w     5                 ; # of parameters
-         dc.w     ' _',127
-         dc.w     ' .',0
-         dc.w     ' .',0
-         dc.w     ' .',1
-         dc.w     ' :',80
+         in       mdv3_parser_asm
+open     movea.l  a0,a2
+         lea      udpname,a1
+         bsr      match_udp_drv_name
+         bne      bad_exit
+         bra      ok
 ok       move.l   #$40,d1           ; reserve space for the channel definition block
          movea.w  mm_alchp,a4
          move.l   a0,-(a7)          ; Save the A0 from entry to open just in case the allocation fails

@@ -1,3 +1,25 @@
+match_udp_drv_name
+         bsr      cmpic
+         bne      udp_drv_no_match
+         move.w   (a2),d4                          ; Length of string to d4
+         movea.l  a2,a1
+         adda.w   #6,a1                               ; a1 now points to anything after 'udp_'
+         subq.w   #4,d4                               ; We consumed the first four bytes when we recognized 'udp_'
+         bsr      read_ip_address                     ; updates d4
+         bne      udp_drv_no_match
+         cmpi.w   #2,d4                               ; There should be at least two more characters for ':' + port number
+         blt      udp_drv_no_match
+         move.b   (a1)+,d1
+         cmpi.b   #':',d1
+         bne      udp_drv_no_match
+         subq.w   #1,d4                               ; Account for the ':' that was read
+         bsr      rdnum
+         bne      udp_drv_no_match
+         moveq    #0,d0
+         rts
+udp_drv_no_match
+         moveq    #-1,d0
+         rts
 cmpic    moveq    #1,d0
          moveq    #2,d1
          move.w   (a2),d2

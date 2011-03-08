@@ -1,3 +1,5 @@
+         bsr      driver_name_test
+         bne      exit
          bsr      read_number_test
          tst.b    d0
          bne      exit
@@ -10,6 +12,23 @@
          bsr      run_byte_tests
 exit     rts
          in       mdv3_parser_asm
+;
+drv1     dc.w     13,'udp_1.2.3.4:1'
+nodrv1   dc.w     7,'foo_bar'
+driver_name_test
+         lea      udpname,a1
+         lea      drv1,a2
+         bsr      match_udp_drv_name
+         bne      driver_name_test_error
+         lea      udpname,a1
+         lea      nodrv1,a2
+         bsr      match_udp_drv_name
+         beq      driver_name_test_error
+         moveq    #0,d0
+         rts
+driver_name_test_error
+         moveq    #-1,d0
+         rts
 ;
 ;
 num1     dc.w     5,'65535'
