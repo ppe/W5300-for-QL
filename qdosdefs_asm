@@ -1,0 +1,25 @@
+; Basic variables
+BV_RIP   equ      $58                        ; Maths stack (rel to a6)
+
+; QDOS error codes
+ERR_NC   equ      -1       ; Not complete
+ERR_NJ   equ      -2       ; Not a valid job
+ERR_OM   equ      -3       ; out of memory
+ERR_OR   equ      -4       ; out of range
+ERR_BO   equ      -5       ; buffer overflow
+ERR_NO   equ      -6       ; channel not open
+ERR_NF   equ      -7       ; file or device not found
+ERR_EX   equ      -8       ; file already exists
+ERR_IU   equ      -9       ; file or device in use
+ERR_EF   equ      -10      ; end of file
+ERR_DF   equ      -11      ; drive full
+ERR_BN   equ      -12      ; bad device name
+ERR_TE   equ      -13      ; transmission error
+ERR_FF   equ      -14      ; format failed
+ERR_BP   equ      -15      ; bad parameter
+ERR_FE   equ      -16      ; file error
+ERR_XP   equ      -17      ; error in expression
+ERR_OV   equ      -18      ; arithmetic overflow
+ERR_NI   equ      -19      ; not implemented
+ERR_RO   equ      -20      ; read only
+ERR_BL   equ      -21      ; bad line

@@ -1,0 +1,41 @@
+         in       mdv3_qdosdefs_asm
+         move.w   BP_INIT,a0
+         lea      procdefs,a1
+         jsr      (a0)
+         rts
+procdefs dc.w     1                          ; Number of procedures
+         dc.w     nslookup-*                 ; Start of procedure
+         dc.b     8                          ; Length of procedure name
+         dc.b     'NSLOOKUP'                 ; Procedure name
+         dc.w     0                          ; End of procedure definitions
+         dc.w     0                          ; Number of functions
+         dc.w     0                          ; End of function definitions
+nslookup move.l   BV_RIP(a6),-(a7)           ; Save maths stack value
+         move.w   CA_GTSTR,a0                ; Get a string parameter
+         jsr      (a0)
+         beq      parse_parameter
+         rts
+parse_parameter
+         cmpi.w   #1,d3                      ; Number of parameters found
+         beq      parameter_ok
+         moveq    #ERR_BP,d0                 ; Bad parameter
+         rts
+parameter_ok
+         movea.l  a6,a4
+         adda.l   a1,a4                      ; a4 now points to the string parameter on the maths stack
+         bsr      create_dns_query_buffer    ; Returns pointer to buffer in a0 and length of query in d5
+         move.l   (a7)+,BV_RIP(a6)           ; restore maths stack to pre-call value
+; Release the buffer
+         move.b   #MT_RECHP,d0
+         trap     #1
+
+         move.b   #MT_JINF,d0
+         moveq    #-1,d1
+         moveq    #0,d2
+         trap     #1
+         moveq    #0,d0
+         rts
+;
+; Include the resolver
+;
+         in       mdv3_resolv_asm

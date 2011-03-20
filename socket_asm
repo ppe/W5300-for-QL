@@ -1,0 +1,13 @@
+         in       mdv3_w5300_asm
+;
+; d1.b = socket number
+; a1 = buffer
+; d2.w = number of bytes to send
+; d3.l = ip destination address
+; d4.w = destination port
+sendto
+         bsr      sr_base           ; Get the base address for the socket's registers into a2
+         move.l   d3,S_DIPR(a2)     ; Destination ip address
+         move.w   d4,S_DPORTR(a2)   ; Destination port
+         bsr      w_wrbuf
+         rts

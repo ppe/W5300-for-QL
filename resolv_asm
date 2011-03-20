@@ -1,4 +1,10 @@
-; a4=pointer to (QL format) string representing address to resolve
+; create_dns_query_buffer
+; Parameters
+;        a4=pointer to (QL format) string representing address to resolve
+; Returns:
+;        d0 = status code, 0 == ok, -1 == error
+;        d5 = total length of formatted
+;        a0 = pointer to buffer containing the formatted DNS query
 ;
 
 dns_qhl  equ      12                ; DNS header length is 12 bytes
@@ -8,22 +14,24 @@ CLASS_IN equ      1
 ; Calculate the number of bytes required for the dns query message including trailing and leading byte of message string null and dns header
 ; and query record trailer
 ; news.lekane.com is converted to 0x04news0x06lekane0x03com0x00 (0xNN a single byte with hex value NN)
-         movea.l  d1,a4
-         move.w   (a1),d1
+create_dns_query_buffer
+         move.w   (a4),d1
          add.b    #dns_qhl+dns_qqt+2,d1
+         move.w   d1,d5                               ; Save total length in d5 where it will be returned to caller
          move.b   #MT_ALCHP,d0
-         moveq    #-1,d2            ; Current job
+         moveq    #-1,d2                              ; Current job
          trap     #1
          tst.l    d0
-         beq      alloc_ok
-         rts
+         bne      alloc_fail
 ; a0 now points to allocated buffer area and a1 still points to start of address to resolve
-alloc_ok
          movea.l  a0,a2                               ; a2 used as base address for copying into
 insert_trailer
          move.w   (a4)+,d1                            ; Length of string that was passed in
-         move.w   #TYPE_A,dns_qhl+2(a2,d1.w)          ; query for A records
-         move.w   #CLASS_IN,dns_qhl+4(a2,d1.w)        ; Class Internet
+; N.B. query name is not necessarily word-aligned so we can't use word sized operations in the following
+         move.b   #0,dns_qhl+2(a2,d1.w)
+         move.b   #TYPE_A,dns_qhl+3(a2,d1.w)          ; query for A records
+         move.b   #0,dns_qhl+4(a2,d1.w)
+         move.b   #CLASS_IN,dns_qhl+5(a2,d1.w)        ; Class Internet
 fill_header
          move.w   #0,(a2)                             ; Id for query. TODO: fill in ID of current job
          move.w   #1,4(a2)                            ; Number of questions
@@ -37,7 +45,6 @@ convert_address
          move.b   #0,dns_qhl+1(a2,d1.w)               ; Terminate the converted string with a null
          tst.w    d1                                  ; If length of string is zero then we are done
          beq      convert_done
-         subq.w   #1,d1                               ; Using dbf for looping so number of loops = d1+1
          moveq    #0,d2                               ; d2 = count of characters in current domain name element
 copy_loop
          move.b   0(a4,d1.w),d4
@@ -53,7 +60,10 @@ copy_loop_test
          dbf      d1,copy_loop
          move.b   d2,dns_qhl+1(a2,d1.w)      ; Set the first byte to run length of first element (d1==-1 after loop)
 convert_done
-         move.b   #MT_RECHP,d0
-         trap     #1
+;         move.b   #MT_RECHP,d0
+;         trap     #1
          moveq    #0,d0
+         rts
+alloc_fail
+         moveq    #-1,d0
          rts

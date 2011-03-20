@@ -44,19 +44,12 @@ exitok   moveq    #0,d0
 exit     rts
 ; Initialize a socket
 ; d1.b = socket #(0-7)
-; Check that socket number is between 0 and 7 and set the base address for accessing socket registers
-s_init   cmpi.w   #7,d1
-         bls      snro_ok
-         moveq    #-1,d0
-         rts
+; Set the base address for accessing socket registers
+s_init   bsr      sr_base
 ;
-; Find base address, address of socket register bank returned in a2
-;
-snro_ok  bsr      sr_base
-;
-; Set socket mode to TCP
+; Set socket mode to TCP/UDP
          andi.w   #S_MR_PM,S_MR(a2)
-         ori.w    #S_MR_TCP,S_MR(a2)
+         ori.w    #S_MR_UDP,S_MR(a2)
 ; Set source port through a simplistic algorithm... source port == FFnn where nn = 8 bit representation of socket number
          addi.w   #$ff00,d1
          move.w   d1,S_PORTR(a2)

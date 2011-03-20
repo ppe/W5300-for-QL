@@ -56,7 +56,7 @@ S_SSR    equ      $08               ; Socket status register
 S_PORTR  equ      $0A               ; Socket source port register
 S_DHAR   equ      $0C               ; Socket destination hardware address register
 S_DPORTR equ      $12               ; Socket destination port register
-S_DIPR   equ      $14               ; Socket destinatio IP address register
+S_DIPR   equ      $14               ; Socket destination IP address register
 S_MSSR   equ      $18               ; Socket maximum segment size register
 S_KPALVR equ      $1A               ; Socket keepalive time register
 S_PROTOR equ      $1B               ; Socket protocol number register
@@ -73,6 +73,7 @@ S_RXFIFO equ      $30               ; Socket RX FIFO register
 MR_RST   equ      $80               ; Mode register reset
 S_MR_PM  equ      $FFF0             ; Mask for resetting the socket mode register protocol bits
 S_MR_TCP equ      1                 ; TCP protocol for socket mode register
+S_MR_UDP equ      2                 ; UDP protocol for socket mode register
 ; Socket commands
 SC_OPEN  equ      1
 SC_CONN  equ      4
