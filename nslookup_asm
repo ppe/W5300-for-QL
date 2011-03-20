@@ -25,6 +25,7 @@ parameter_ok
          adda.l   a1,a4                      ; a4 now points to the string parameter on the maths stack
          bsr      create_dns_query_buffer    ; Returns pointer to buffer in a0 and length of query in d5
          move.l   (a7)+,BV_RIP(a6)           ; restore maths stack to pre-call value
+         
 ; Release the buffer
          move.b   #MT_RECHP,d0
          trap     #1
@@ -39,3 +40,7 @@ parameter_ok
 ; Include the resolver
 ;
          in       mdv3_resolv_asm
+;
+; Include socket functionality
+;
+         in       mdv3_socket_asm

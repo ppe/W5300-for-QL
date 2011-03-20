@@ -1,13 +1,37 @@
          in       mdv3_w5300_asm
 ;
+; open socket #n
+; Parameters
+; d1.b = socket number
+; d2.w = socket mode (flag from w5300_const_asm, S_MR_TCP or S_MR_UDP
+; d3.w = source port number. If 0, automatically allocated
+;
+socket
+         bsr      sr_base                    ; Get base address for this socket's registers
+; Set socket mode
+         andi.w   #S_MR_PM,S_MR(a2)          ; Clear any existing socket mode using mask
+         ori.w    d2,S_MR(a2)
+; See if source port number was supplied
+         tst.w    d3
+         bne      socket_port_number_set
+; Set source port through a simplistic algorithm... source port == FFnn where nn = 8 bit representation of socket number
+         move.b   d1,d3
+         ext.w    d3
+         addi.w   #$ff00,d3
+socket_port_number_set
+         move.w   d3,S_PORTR(a2)
+; Send an "open" command
+         move.w   #SC_OPEN,S_CR(a2)
+         rts
+;
 ; d1.b = socket number
 ; a1 = buffer
 ; d2.w = number of bytes to send
 ; d3.l = ip destination address
 ; d4.w = destination port
 sendto
-         bsr      sr_base           ; Get the base address for the socket's registers into a2
-         move.l   d3,S_DIPR(a2)     ; Destination ip address
-         move.w   d4,S_DPORTR(a2)   ; Destination port
+         bsr      sr_base                    ; Get the base address for the socket's registers into a2
+         move.l   d3,S_DIPR(a2)              ; Destination ip address
+         move.w   d4,S_DPORTR(a2)            ; Destination port
          bsr      w_wrbuf
          rts
