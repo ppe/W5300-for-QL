@@ -3,13 +3,23 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
-int main() /*do you know what is int main() ? */
+
+/* Adapted from http://www.binarytides.com/blog/dns-query-code-in-c-with-winsock/ */
+int main()
 {
+	uint32 ipAddress;
+	uint8 *addrPtr = (uint8 *)&ipAddress;
 	unsigned char hostname[100];
+	
 	initW5300();
 	printf("\nEnter Hostname to Lookup : ");
 	gets((char*)hostname);
-	ngethostbyname(hostname);
+	ipAddress = ngethostbyname(hostname);
+	if (0 != ipAddress) {
+		printf("IPv4 address : %u.%u.%u.%u",addrPtr[0],addrPtr[1],addrPtr[2],addrPtr[3]);
+	} else {
+		printf("No IPv4 address found.");
+	}
 	return 0;
 }
 
@@ -18,74 +28,63 @@ unsigned short readWord(unsigned char *address) {
 	value = (address[0]<<8) + address[1];
 }
 
-void ngethostbyname(unsigned char *host)
-{
-	unsigned char response[100];
-	uint8 *buf,*qname,*reader;
-	int i , j , stop;
-	SOCKET s = 0;  /* Number of socket to use: 0-7 */
-
-	struct RES_RECORD answers[20],auth[20],addit[20]; /*the replies from the DNS server */
-
-	struct DNS_HEADER *dns = NULL;
-	struct QUESTION *qinfo = NULL;
-
-	/*Set the DNS structure to standard queries */
-	buf = (uint8 *)malloc(2048);
-	dns = (struct DNS_HEADER *)buf;
-
-	dns->qr = 0; /*This is a query */
-	dns->opcode = 0; /*This is a standard query */
-	dns->aa = 0; /*Not Authoritative */
-	dns->tc = 0; /*This message is not truncated */
-	dns->rd = 1; /*Recursion Desired */
-	dns->ra = 0; /*Recursion not available! hey we dont have it (lol) */
-	dns->z = 0;
-	dns->ad = 0;
-	dns->cd = 0;
-	dns->rcode = 0;
+void fillHeader(struct DNS_HEADER * dnsHeader) {
+	dnsHeader->qr = 0; /*This is a query */
+	dnsHeader->opcode = 0; /*This is a standard query */
+	dnsHeader->aa = 0; /*Not Authoritative */
+	dnsHeader->tc = 0; /*This message is not truncated */
+	dnsHeader->rd = 1; /*Recursion Desired */
+	dnsHeader->ra = 0;
+	dnsHeader->z = 0;
+	dnsHeader->ad = 0;
+	dnsHeader->cd = 0;
+	dnsHeader->rcode = 0;
 	
-	dns->id = (unsigned short)42; /*Query id of 42*/
-	dns->q_count = 1; /*we have only 1 question */
-	dns->ans_count = 0;
-	dns->auth_count = 0;
-	dns->add_count = 0;
-	/*point to the query portion */
-	qname =(unsigned char*)&(buf[sizeof(struct DNS_HEADER)]);
+	dnsHeader->id = (unsigned short)42; /*Query id of 42*/
+	dnsHeader->q_count = 1; /*we have only 1 question */
+	dnsHeader->ans_count = 0;
+	dnsHeader->auth_count = 0;
+	dnsHeader->add_count = 0;
+}
 
+void fillQuery(uint8 * dnsQueryBuffer, unsigned char *host) {
+	uint8 *qname;
+	struct QUESTION *qinfo;
+	/*point to the query portion */
+	qname =(unsigned char*)&(dnsQueryBuffer[sizeof(struct DNS_HEADER)]);
 	ChangetoDnsNameFormat(qname,host);
-	qinfo =(struct QUESTION*)&(buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)]); /*fill it */
-	printf("qinfo: %u\n", qinfo);
+	qinfo =(struct QUESTION*)&(dnsQueryBuffer[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)]); /*fill it */
 	qinfo->qtype_h = 0; /* we are requesting the ipv4 address */
 	qinfo->qtype_l = 1; /* we are requesting the ipv4 address */
 	qinfo->qclass_h = 0; /* internet */
 	qinfo->qclass_l = 1; /* internet */
+}
 
-	printf("Buf base: %d,dns=%d qname=%d, contents:\n",buf,dns,qname);
-	dump((uint8 *)dns,sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1) + sizeof(QUERY));
-	printf("Press enter to continue ");
-	gets((char*)response);
-	printf("\nOpening socket...");
+void sendQueryAndReceiveResponse(uint8 *buf, uint32 bufSize ,uint32 len) {
+	SOCKET s = 0;  /* Number of socket to use: 0-7 */
 	socket(s,Sn_MR_UDP,4224,0);
-	printf("\nSending Packet...");
-	send_udp(s, buf, (uint32)sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION));
-	printf("Sent");
-
-	printf("\nReceiving answer...");
-	read_udp(s, buf, 2048);
-	printf("Received.\n");
+	send_udp(s, buf, len);
+	read_udp(s, buf, bufSize);
 	close(s);
-	dns=(struct DNS_HEADER*)buf;
+}
 
-	/*move ahead of the dns header and the query field */
-	reader=&(buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION)]);
+uint32 findIp(uint8 * buf) {
+	uint8 *answer, *qname;
+	uint32 ipAddress;
+	struct RES_RECORD dnsAnswer;
+	struct DNS_HEADER *dns = NULL;
+	int i,j,stop;
+	
+	dns = (struct DNS_HEADER *)buf;
+	qname =(unsigned char*)&(buf[sizeof(struct DNS_HEADER)]);
+	answer=&(buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION)]);
 
-	printf("\nThe response contains : ");
+	/*printf("\nThe response contains : ");
 	printf("\n %d Questions.",dns->q_count);
 	printf("\n %d Answers.",dns->ans_count);
 	printf("\n %d Authoritative Servers.",dns->auth_count);
 	printf("\n %d Additional records.\n\n",dns->add_count);
-
+	*/
 	/*reading answers */
 	stop=0;
 
@@ -93,130 +92,46 @@ void ngethostbyname(unsigned char *host)
 	{
 		unsigned short type;
 		
-		answers[i].name=ReadName(reader,buf,&stop);
-		printf("Answer #%d name is %s.", i,answers[i].name);
-		reader = reader + stop;
-
-		answers[i].resource = (struct R_DATA*)(reader);
-		printf("Resource dump:\n");
-		dump((uint8 *)answers[i].resource, (uint32)sizeof(struct R_DATA));
-		reader = reader + sizeof(struct R_DATA);
-		type = readWord((unsigned char *)&(answers[i].resource->type));
-		printf("Type = %u\n",type);
+		dnsAnswer.name=ReadName(answer,buf,&stop);
+		answer = answer + stop;
+		dnsAnswer.resource = (struct R_DATA*)(answer);
+		answer = answer + sizeof(struct R_DATA);
+		type = readWord((unsigned char *)&(dnsAnswer.resource->type));
 		if( type == 1) /*if its an ipv4 address */
 		{
-			unsigned short data_len;
-			data_len = readWord((unsigned char *)&(answers[i].resource->data_len));
-			printf("Found an IP v4 address, allocating %d bytes for rdata.\n", data_len);
-			answers[i].rdata = (unsigned char*)malloc(data_len);
-
-			for(j=0 ; j<data_len ; j++)
-			answers[i].rdata[j]=reader[j];
-
-			answers[i].rdata[data_len] = '\0';
-
-			reader = reader + data_len;
-
-		}
-		else
+			uint8 *ipAddrPtr = (uint8 *)&ipAddress;
+			for(j=0 ; j<4 ; j++) {
+				uint8 num = answer[j];
+				ipAddrPtr[j]=num;
+			}
+			return ipAddress;
+			}
+		else /* It's an alias name */
 		{
-			printf("Found something else.");
-			answers[i].rdata = ReadName(reader,buf,&stop);
-			reader = reader + stop;
+			ReadName(answer,buf,&stop);
+			answer = answer + stop;
 		}
 	}
+	return (uint32)0;
+}
 
-	/*read authorities */
-/*
-	for(i=0;i<dns->auth_count;i++)
-	{
-		auth[i].name=ReadName(reader,buf,&stop);
-		reader+=stop;
+uint32 ngethostbyname(unsigned char *host)
+{
+	uint8 *buf,*qname;
+	int i , j;
+	uint32 ipv4address = 0;
+	struct DNS_HEADER *dns = NULL;
 
-		auth[i].resource=(struct R_DATA*)(reader);
-		reader+=sizeof(struct R_DATA);
-
-		auth[i].rdata=ReadName(reader,buf,&stop);
-		reader+=stop;
-	}
-*/
-	/*read additional */
-/*
-	for(i=0;i<dns->add_count;i++)
-	{
-		addit[i].name=ReadName(reader,buf,&stop);
-		reader+=stop;
-
-		addit[i].resource=(struct R_DATA*)(reader);
-		reader+=sizeof(struct R_DATA);
-
-		if(addit[i].resource->type==1)
-		{
-		addit[i].rdata = (unsigned char*)malloc(addit[i].resource->data_len);
-		for(j=0;j<addit[i].resource->data_len;j++)
-		addit[i].rdata[j]=reader[j];
-
-		addit[i].rdata[addit[i].resource->data_len]='\0';
-		reader+=addit[i].resource->data_len;
-
-	}
-	else
-	{
-		addit[i].rdata=ReadName(reader,buf,&stop);
-		reader+=stop;
-	}
-	}
-*/
-	/*print answers */
-	for(i=0;i<dns->ans_count;i++)
-	{
-		unsigned short type;
-		type = readWord((unsigned char *)&(answers[i].resource->type));
-		/*printf("\nAnswer : %d",i+1); */
-		printf("Name : %s ",answers[i].name);
-
-		if(type==1) /*IPv4 address */
-		{
-			unsigned char *p;
-			p=(unsigned char*)answers[i].rdata;
-			printf("has IPv4 address : %u.%u.%u.%u",p[0],p[1],p[2],p[3]);
-		}
-		if(type==5) /*Canonical name for an alias */
-		{
-			printf("has alias name : %s",answers[i].rdata);
-		}
-
-		printf("\n");
-	}
-
-	/*print authorities */
-/* 	for(i=0;i<dns->auth_count;i++)
-	{
-		printf("\nAuthorities : %d",i+1);
-		printf("Name : %s ",auth[i].name);
-		if(auth[i].resource->type==2)
-		{
-			printf("has authoritative nameserver : %s",auth[i].rdata);
-		}
-		printf("\n");
-	}
- */
-	/*print additional resource records */
-/*	for(i=0;i<dns->add_count;i++)
-	{
-		printf("\nAdditional : %d",i+1);
-		printf("Name : %s ",addit[i].name);
-		if(addit[i].resource->type==1)
-		{
-			char *p;
-			p=(char*)addit[i].rdata;
-			printf("has IPv4 address : %u.%u.%u.%u",p[0],p[1],p[2],p[3]);
-		}
-		printf("\n");
-	}
-*/
+	/*Set the DNS structure to standard queries */
+	buf = (uint8 *)malloc(UDP_MSG_BUF_SIZE);
+	dns = (struct DNS_HEADER *)buf;
+	qname =(unsigned char*)&(buf[sizeof(struct DNS_HEADER)]);
+	fillHeader(dns);
+	fillQuery(buf, host);
+	sendQueryAndReceiveResponse(buf, UDP_MSG_BUF_SIZE, (uint32)sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION));
+	ipv4address = findIp(buf);
 	free(buf);
-	return;
+	return ipv4address;
 }
 
 unsigned char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
@@ -294,7 +209,6 @@ void ChangetoDnsNameFormat(unsigned char* dns,unsigned char* host)
 		}
 	}
 	*dns++='\0';
-	printf("Convert from %s to %s\n",host,orig_dns);
 }
 
 void initW5300() {
@@ -322,31 +236,14 @@ void initW5300() {
    /* configure network information */
 	setGAR(gw);                                     /* set gateway IP address */
 	setSUBR(sn);                                    /* set subnet mask address */
-	setSIPR(ip);                                    /* set source IP address */
-   
-   /* verify network information */
-   getSHAR(mac);                                      /* get source hardware address */
-   getGAR(gw);                                        /* get gateway IP address */
-   getSUBR(sn);                                       /* get subnet mask address */
-   getSIPR(ip);                                       /* get source IP address */
-   
-   printf("SHAR : %02x:%02x:%02x:%02x:%02x:%02x\r\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-   printf("GWR  : %d.%d.%d.%d\r\n",gw[0],gw[1],gw[2],gw[3]);
-   printf("SUBR : %d.%d.%d.%d\r\n",sn[0],sn[1],sn[2],sn[3]);
-   printf("SIPR : %d.%d.%d.%d\r\n",ip[0],ip[1],ip[2],ip[3]);
+	setSIPR(ip);                                    /* set source IP address */   
 }
 
 void send_udp(SOCKET s, uint8* buf, uint32 len)
 {
-	/*Use the open dns servers - 208.67.222.222 and 208.67.220.220 */
-	/*dest.sin_addr.s_addr=inet_addr("208.67.222.222");*/
-
    uint8 destip[4] = {192,168,0,1};
    uint16 destport = 53;
    
-   printf("Sending to %d.%d.%d.%d(%d) %d bytes\r\n",destip[0],destip[1],destip[2],destip[3],destport,len);
-   printf("Buffer base %d with contents:\r\n",buf);
-   /* dump(buf,len); */
    switch(getSn_SSR(s))
    {
       case SOCK_UDP:
@@ -369,7 +266,6 @@ void read_udp(SOCKET s, uint8* buf, uint32 len)
    uint16 destport;
 	int i;
    
-   printf("Reading, buffer base %d.\r\n",buf);
    switch(getSn_SSR(s))
    {
       case SOCK_UDP:
@@ -377,12 +273,9 @@ void read_udp(SOCKET s, uint8* buf, uint32 len)
 			 if((len=getSn_RX_RSR(s)) > 0)                   /* check the size of received data */
 			 {
 				len = recvfrom(s,buf,len,destip,&destport);  /* receive data from a destination */
-				printf("Received %d bytes from %d.%d.%d.%d(%d)\r\n",len, destip[0],destip[1],destip[2],destip[3],destport);
-				printf("Buffer contents: \n");
-				dump(buf,len);
 				break;
 			 } else {
-				printf("Still trying to receive...");
+				printf("Still waiting for answer...");
 				sleep(1);
 			}
 		}	

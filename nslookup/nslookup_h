@@ -10,10 +10,11 @@ char dns_servers[10][100];
 #define T_SOA 6 /* start of authority zone */
 #define T_PTR 12 /* domain name pointer */
 #define T_MX 15 /* mail routing information */
+#define UDP_MSG_BUF_SIZE 2048 /* UDP message buffer size */
 
 /*Function Declarations */
 unsigned short readWord(unsigned char *);
-void ngethostbyname (unsigned char*);
+uint32 ngethostbyname (unsigned char*);
 void ChangetoDnsNameFormat (unsigned char*,unsigned char*);
 unsigned char* ReadName (unsigned char*,unsigned char*,int*);
 unsigned char* PrepareDnsQueryPacket (unsigned char*);
