@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+/* Adapted from http://www.binarytides.com/blog/dns-query-code-in-c-with-winsock/ */
+
 unsigned short readWord(unsigned char *address) {
 	unsigned short value;
 	value = (address[0]<<8) + address[1];

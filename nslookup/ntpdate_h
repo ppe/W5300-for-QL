@@ -1,0 +1,3 @@
+#include "resolv_h"
+
+#define NTP_PACKET_LEN 48

@@ -1,7 +1,6 @@
 #include "nslookup_h"
 #include <stdio.h>
 
-/* Adapted from http://www.binarytides.com/blog/dns-query-code-in-c-with-winsock/ */
 int main()
 {
 	uint32 ipAddress;

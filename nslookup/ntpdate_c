@@ -1,0 +1,87 @@
+#include "ntpdate_h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <qdos.h>
+
+void send_query(SOCKET s, uint8* buf, uint32 len, uint32 ntpServerAddress)
+{
+   uint16 destport = 123;
+   
+   switch(getSn_SSR(s))
+   {
+      case SOCK_UDP:
+            if(len !=sendto(s,buf,len,(uint8 *)&ntpServerAddress,destport))
+            {
+               printf("%d : Sendto Fail.len=%d,",s,len);
+            }
+         break;
+      default:
+		printf("UDP send failed. Socket not in SOCK_UDP state. Closing socket.\n");
+		close(s);
+        break;
+   }
+}
+
+void read_answer(SOCKET s, uint8* buf, uint32 len)
+{
+   uint8 destip[4];
+   uint16 destport;
+	int i;
+   
+   switch(getSn_SSR(s))
+   {
+      case SOCK_UDP:
+		for(i=0;i<10;i++) {
+			 if((len=getSn_RX_RSR(s)) > 0)
+			 {
+				len = recvfrom(s,buf,len,destip,&destport);
+				break;
+			 } else {
+				printf("Still waiting for answer...");
+				sleep(1);
+			}
+		}	
+         break;
+      case SOCK_CLOSED:
+         close(s);
+         break;
+      default:
+         break;
+   }
+}
+
+uint32 getTimeStamp(uint32 ntpServerAddress) {
+	uint8 *ntpQueryBuf;
+	uint32 timeStamp;
+	SOCKET s = 0;  /* Number of socket to use: 0-7 */
+	ntpQueryBuf = (uint8 *)malloc(NTP_PACKET_LEN);
+	ntpQueryBuf[0] = 0x1b;
+	socket(s,Sn_MR_UDP,8125,0);
+	send_query(s, ntpQueryBuf, NTP_PACKET_LEN, ntpServerAddress);
+	read_answer(s, ntpQueryBuf, NTP_PACKET_LEN);
+	close(s);
+	timeStamp = *((uint32 *)&(ntpQueryBuf[40]));
+	return timeStamp;
+}
+
+int main()
+{
+	unsigned char ntpServer[] = "ntp.saunalahti.fi";
+	uint32 ipAddress, deltaSecs, ntpTimeStamp;
+	uint8 *addrPtr = (uint8 *)&ipAddress;
+	unsigned char hostname[100];
+	
+	deltaSecs = 22280 * 24 * 3600; /* 22280 days between NTP epoch of 1.1.1900 00:00:00 and QDOS epoch of 1.1.1961 00:00:00 */
+	initW5300();
+	ipAddress = ngethostbyname(ntpServer);
+	if (0 != ipAddress) {
+		printf("NTP server %s has IPv4 address : %u.%u.%u.%u\n",ntpServer, addrPtr[0],addrPtr[1],addrPtr[2],addrPtr[3]);
+		ntpTimeStamp = getTimeStamp(ipAddress);
+		printf("Got timestamp: %u\n", ntpTimeStamp);
+		mt_sclck((long)(ntpTimeStamp-deltaSecs));
+	} else {
+		printf("No IPv4 address found for NTP server %s.", ntpServer);
+	}
+	return 0;
+}
