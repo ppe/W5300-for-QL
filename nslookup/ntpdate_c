@@ -62,6 +62,7 @@ uint32 getTimeStamp(uint32 ntpServerAddress) {
 	read_answer(s, ntpQueryBuf, NTP_PACKET_LEN);
 	close(s);
 	timeStamp = *((uint32 *)&(ntpQueryBuf[40]));
+	free(ntpQueryBuf);
 	return timeStamp;
 }
 
