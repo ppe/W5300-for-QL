@@ -1,0 +1,84 @@
+#include "wget_h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
+uint32 wget_recv(SOCKET s, uint8 * buf, uint32 len) {
+	uint16 pack_size=0;
+	wiz_read_buf(s,(uint8*)&pack_size,2);        /* extract the PACKET-INFO(DATA packet length) */
+	printf("%d:pack_size=%d\r\n",s,pack_size);
+	wiz_read_buf(s, buf, (uint32)pack_size);     /* copy data    */
+	setSn_CR(s,Sn_CR_RECV);                      /* recv */
+	return pack_size;
+}
+
+void wget(SOCKET s, uint8* addr, uint16 port) {
+	int i,total;
+	uint32 len, rcvd;
+	char *getCmd;
+	char *buf;
+	FILE * file;
+   
+	printf("Creating socket.\n");
+	socket(s,Sn_MR_TCP,12451,0);
+	printf("Connecting.\n");
+	connect(s, addr, port);
+	for (i=0 ;i<MAX_RETRIES ;i++) {
+		uint8 socketStatus;
+		socketStatus = getSn_SSR(s);
+		printf("Checking if established.\n");
+		if(socketStatus == SOCK_ESTABLISHED) {
+			getCmd = (char *)malloc(20);
+			buf = (char *)malloc(8192);
+			strcpy (getCmd, "GET / HTTP/1.0\n\n");
+			printf("Established.\n");
+			if(getSn_IR(s) & Sn_IR_CON) {
+				printf("%d : Connect OK\n",s);
+				setSn_IR(s,Sn_IR_CON);
+				printf("Sending cmd '%s'.\n", getCmd);
+				send(s,(uint8 *)getCmd,strlen(getCmd));
+				printf("Opening file.\n");
+				file = fopen("received","w");
+				total = 0;
+				do {
+					socketStatus = getSn_SSR(s);
+					printf("Socket status = %u.\n",socketStatus);
+					len = getSn_RX_RSR(s);
+				} while(len == 0 && socketStatus == SOCK_ESTABLISHED);
+				if(len > 0) {
+					do {
+						printf("%u bytes in rx buffer.\n", len);
+						rcvd = wget_recv(s,(uint8 *)buf,len);
+						printf("Received %u bytes.\n",rcvd);
+						if (rcvd > 0) {
+							total += rcvd;
+							fwrite(buf,1,rcvd,file);
+						}
+						len = getSn_RX_RSR(s);
+					} while(len > 0);
+				} else {
+					printf("No bytes received, socket status: %x.\n", socketStatus);
+				}
+				printf("Received a total of %u bytes. Disconnecting socket.\n", total);
+				disconnect(s);
+				printf("Closing socket.\n");
+				close(s);
+				printf("Closing file.\n");
+				fclose(file);
+			}
+			printf("Done.\n");
+			free(getCmd);
+			free(buf);
+			return;
+		}
+		printf("Socket status is %u. Retry #%u\n",socketStatus,i+1);
+		sleep(1);
+	}
+}
+
+int main(int ac, char **av) {
+	uint8 address[] = {192,168,0,1};
+	initW5300();
+	wget(0,address,80);
+}
