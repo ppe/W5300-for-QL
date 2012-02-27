@@ -1,13 +1,13 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Company: 
-// Engineer: Petri Pellinen
+// Engineer: 
 // 
-// Create Date:    21:46:41 11/27/2010 
+// Create Date:    18:34:52 02/05/2012 
 // Design Name: 
-// Module Name:    QeControl 
-// Project Name: QL Ethernet card
-// Target Devices: XC9536
+// Module Name:    QeDebug 
+// Project Name: 
+// Target Devices: 
 // Tool versions: 
 // Description: 
 //
@@ -18,44 +18,41 @@
 // Additional Comments: 
 //
 //////////////////////////////////////////////////////////////////////////////////
-// synthesis attribute BUFG of clk is CLK;
-module QeControl(
-    input [9:0] address,
-	 input [3:0] sp,
-    input asl,
-    input dsl,
-    input rdwl,
-	 input clk,
-    output dtackl,
-    output dsmcl,
-    output dbenl,
-    output dbdir,
-    output wizcsl,
-    output wizrdl,
-    output wizwrl,
-	 output wizrstl
-    );
-
+module QeDebug(
+		input [9:0] address,
+		input asl,
+		input dsl,
+		input rdwl,
+		input clk,
+		output dbdir,
+		output dbenl,
+		output dtackl,
+		output dsmcl,
+		output wizcsl,
+		output wizrdl,
+		output wizwrl,
+		output wizrstl
+   );
 	wire expansionAddress;
 	wire cardAddressActive;
 	wire wiznetAddressActive;
 	wire resetAddressActive;
 	wire trigger_wiz_reset;
-	 
+
 	 W5300Reset w_reset (
 		.clk(clk),
 		.trigger_reset(trigger_wiz_reset),
 		.w5300_resetl(wizrstl)
 	 );
-	 
-	assign expansionAddress = (address[9:8] == 2'h3);
-	assign cardAddressActive = (address[7:4] == sp) && expansionAddress && !asl;
+
+	assign expansionAddress = address[9:8] == 2'h3;
+	assign cardAddressActive = address[7:4] == 4'h1 && expansionAddress && !asl;
 	assign wiznetAddressActive = cardAddressActive && address[3:0] == 4'hf;
 	assign resetRequested = cardAddressActive && address[3:0] == 4'he && rdwl == 0;
-	assign dtackl = ( !dbenl && !dsl ) ? 0 : 1'bZ ;
-	assign dsmcl = (cardAddressActive && !asl) ? 1 : 1'bZ;
+	assign dsmcl = cardAddressActive;
+   assign dbdir = rdwl;
 	assign dbenl = !cardAddressActive;
-	assign dbdir = rdwl;
+	assign dtackl = ( !dbenl && !dsl ) ? 0 : 1;
 	assign wizcsl = !(wiznetAddressActive && !dsl);
 	assign wizrdl = !rdwl;
 	assign wizwrl = rdwl;

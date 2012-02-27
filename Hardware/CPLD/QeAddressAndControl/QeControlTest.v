@@ -1,4 +1,4 @@
-`timescale 1us / 1us
+`timescale 1ns / 1ns
 
 ////////////////////////////////////////////////////////////////////////////////
 // Company: 
@@ -25,88 +25,97 @@
 module QeControlTest;
 
 	// Inputs
-	reg [11:0] address;
+	reg [9:0] address;
+	reg [3:0] sp;
 	reg asl;
 	reg dsl;
 	reg rdwl;
+	reg clk;
 
 	// Outputs
 	wire dtackl;
 	wire dsmcl;
-	wire gate7seg;
 	wire dbenl;
 	wire dbdir;
 	wire wizcsl;
 	wire wizrdl;
 	wire wizwrl;
+	wire wizrstl;
 
 	// Instantiate the Unit Under Test (UUT)
 	QeControl uut (
 		.address(address), 
+		.sp(sp),
 		.asl(asl), 
 		.dsl(dsl), 
 		.rdwl(rdwl), 
 		.dtackl(dtackl), 
 		.dsmcl(dsmcl), 
-		.gate7seg(gate7seg), 
 		.dbenl(dbenl), 
 		.dbdir(dbdir), 
 		.wizcsl(wizcsl), 
 		.wizrdl(wizrdl), 
-		.wizwrl(wizwrl)
+		.wizwrl(wizwrl),
+		.wizrstl(wizrstl),
+		.clk(clk)
 	);
 
 	initial begin
 		// Initialize Inputs
-		address = 0;
+		address = 10'h111;
+		sp = 2'h0;
 		asl = 1;
 		dsl = 1;
 		rdwl = 1;
-
+		clk = 0;
+	
 		// Wait 100 ns for global reset to finish
-		#50;
-		address = 12'h183;
-		asl = 0;
-		#50;
-		dsl = 0;
-		#50;
-		dsl = 1;
-		asl = 1;
-		#50;
-		asl = 0;
+		#100
+		address = 10'h30e;
 		rdwl = 0;
-		#50;
+		asl = 0;
+		#10
 		dsl = 0;
-		#50;
-		dsl = 1;
+		#10
 		asl = 1;
+		dsl = 1;
 		#50;
-		address = 12'h192;
+		address = 10'h133;
 		asl = 0;
 		#50;
 		dsl = 0;
 		#50;
-		asl = 1;
 		dsl = 1;
-		#50;
-		address = 12'h194;
 		asl = 1;
-		rdwl = 1;
+		#50;
+		address = 10'b1100000000;
+		asl = 0;
 		#50;
 		dsl = 0;
 		#50;
 		dsl = 1;
 		asl = 1;
+		rdwl=1;
 		#50;
-		address = 12'h191;
+		address = 10'h30f;
 		asl = 0;
-		rdwl = 1;
+		#50;
+		dsl = 0;
+		#50;
+		dsl = 1;
+		asl = 1;
+		#50
+		address = 10'h30c;
+		rdwl = 0;
+		asl = 0;
 		#50;
 		dsl = 0;
 		#50;
 		dsl = 1;
 		asl = 1;
 	end
-      
+   always begin
+		#5 clk = ~clk;
+	end
 endmodule
 
