@@ -78,7 +78,7 @@ void wget(SOCKET s, uint8* addr, uint16 port) {
 }
 
 int main(int ac, char **av) {
-	uint8 address[] = {192,168,0,1};
+	uint8 address[] = {192,168,0,100};
 	initW5300();
-	wget(0,address,80);
+	wget(0,address,8080);
 }
