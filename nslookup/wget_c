@@ -4,12 +4,44 @@
 #include <unistd.h>
 #include <string.h>
 
+/*
+	bytesAvailable:
+		(RX_RSR > 0) || bufferHasUnreadBytes
+		
+	do
+		if bytesAvailable
+			if ! bufferHasUnreadBytes
+				fetchBytesFromSocket
+				appendBytesToBuffer
+			attemptReadLine
+			if lineWasRead
+				removeReadFromBuffer
+				if lineEmpty
+					break
+				else
+					addLineToHeaders
+		else
+			mt_susjb(some_ticks)
+	while ((bytesAvailable || SOCKET_ESTABLISHED) && (totalBuffered <= 8k))
+*/
+void readHttpHeaders() {
+	char *buf;
+	if ((buf = malloc(BUFSIZE)) != NULL) {
+		while(headerIncomplete) {
+			if(readHeaderLine() != NULL) {
+				
+			}
+		}
+		free(buf);
+	}
+}
+
 uint32 wget_recv(SOCKET s, uint8 * buf, uint32 len) {
 	uint16 pack_size=0;
 	wiz_read_buf(s,(uint8*)&pack_size,2);        /* extract the PACKET-INFO(DATA packet length) */
 	printf("%d:pack_size=%d\r\n",s,pack_size);
-	wiz_read_buf(s, buf, (uint32)pack_size);     /* copy data    */
-	setSn_CR(s,Sn_CR_RECV);                      /* recv */
+	wiz_read_buf(s, buf, (uint32)pack_size);
+	setSn_CR(s,Sn_CR_RECV);
 	return pack_size;
 }
 

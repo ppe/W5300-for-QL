@@ -2,6 +2,7 @@
 #include "w5300_h"
 #include "resolv_h"
 #define MAX_RETRIES 10
+#defined BUFSIZE 8192
 
 char _prog_name[] = "wget";
 long (*_cmdchannels)() = NULL;
