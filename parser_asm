@@ -10,7 +10,14 @@ match_udp_drv_name
          adda.w   #6,a1                               ; a1 now points to anything after 'udp_'
          subq.w   #4,d4                               ; We consumed the first four bytes when we recognized 'udp_'
          bsr      read_ip_address                     ; updates d4
+         beq      ip_address_known
+         move.w   (a2),d4
+         movea.l  a2,a1
+         adda.w   #6,a1                               ; a1 now points to anything after 'udp_'
+         subq.w   #4,d4                               ; We consumed the first four bytes when we recognized 'udp_'
+         bsr      resolve_host_name
          bne      udp_drv_no_match
+ip_address_known
          cmpi.w   #2,d4                               ; There should be at least two more characters for ':' + port number
          blt      udp_drv_no_match
          move.b   (a1)+,d1
@@ -118,4 +125,11 @@ read_byte_and_update_regs
          adda.w   d3,a1                               ; d3 from 'rdbyte' shows how many chars were read
          sub.w    d3,d4
 abort_read
+         rts
+; Read and resolve host name
+; a1=pointer to start of string, read until ':'
+; d4.w = length of string
+; TODO: call resolver
+resolve_host_name
+         moveq    #0,d0
          rts
