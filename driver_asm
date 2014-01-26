@@ -1,3 +1,4 @@
+src_dev  equ      'mdv3_'
 ; Set up the serio pointers area
          lea      ptrs,a0
          lea      io_ready,a2
@@ -24,7 +25,7 @@ lnkblk   ds.l     $40
 udpname  dc.w     'UDP'
 ; Insert W5300 code
 ;         in       mdv3_w5300_asm
-         in       mdv3_parser_asm
+         in       @src_device_'parser_asm'
 open     movea.l  a0,a2
          lea      udpname,a1
          bsr      match_udp_drv_name
