@@ -138,10 +138,10 @@ find_host_name
          dbf      d4,find_host_name
          bra      invalid_host_name                   ; No colon after host name found -> invalid
 colon_after_host_name_found
-         suba     a1,a3
+         suba.l   a1,a3
          move.w   a3,d2
          subq.w   #1,d2                               ; Length of string before ':', a3 is always incremented at least once
-         tst.w    #0,d2                               ; Was colon the first character? i.e. no host name given
+         cmp.w    #0,d2                               ; Was colon the first character? i.e. no host name given
          beq      invalid_host_name
 ; a1 still points to start of string, d2.w contains length of hostname string
 ;
