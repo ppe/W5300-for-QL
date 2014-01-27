@@ -128,7 +128,7 @@ abort_read
          rts
 ; Read and resolve host name
 ; a1=pointer to start of string, read until ':'
-; d4.w = length of string
+; d4.w = length of string, updated as string is consumed
 resolve_host_name
          movea.l  a1,a3
 find_host_name
@@ -146,6 +146,8 @@ colon_after_host_name_found
 ; a1 still points to start of string, d2.w contains length of hostname string
 ;
 ; TODO call resolver here with the hostname
+; update a1 to indicate host name has been consumed
+		 adda.w   d2,a1
          moveq    #0,d0
          rts
 invalid_host_name
