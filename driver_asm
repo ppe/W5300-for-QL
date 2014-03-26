@@ -20,33 +20,61 @@
          bne      bad_exit
 ;         bsr      init_w5
          bra      io_ready
+; Remove driver from chain
+         lea      lnkblk+$18,a0
+         moveq    #mt_riod,d0        ; remove this driver
+         trap     #1
+         bra      io_ready
 lnkblk   ds.l     $40
 udpname  dc.w     'UDP'
 ; Insert W5300 code
 ;         in       mdv3_w5300_asm
+; Insert driver name parser
          in       mdv3_parser_asm
-open     movea.l  a0,a2
-         lea      udpname,a1
-         bsr      match_udp_drv_name
-         beq      ok
+pop_notme
+         adda.w   #6,a7             ; Ditch saved string length (word) and pointer to start of string (long word)   
+notme
          moveq    #-7,d0            ; "not found" == driver name does not match
-		 rts
-ok       move.l   #$40,d1           ; reserve space for the channel definition block
+         rts
+open     movea.l  a0,a2
+         move.w   (a2)+,d1
+         cmpi.w   #4,d1
+         bcs      notme   
+         move.l   (a2)+,d2
+         and.l    #$dfdfdfff,d2     ; Uppercase the first three characters
+         cmpi.l   #'UDP_',d2
+         bne      notme
+         subq.w   #4,d1             ; Four characters have been read from driver name, update length remaining
+         move.w   d1,-(a7)          
+         move.l   a2,-(a7)
+         move.w   d1,d4                             ; Length of string to d4
+         movea.l  a2,a1                             ; Pointer to first character after udp_
+         bsr      read_ip_address                     ; updates d4
+         beq      ip_address_known
+         move.w   4(a7),d4
+         movea.l  (a7),a1
+         bsr      resolve_host_name
+         bne      pop_notme
+ip_address_known
+         cmpi.w   #2,d4                               ; There should be at least two more characters for ':' + port number
+         blt      pop_notme
+         move.b   (a1)+,d1
+         cmpi.b   #':',d1
+         bne      pop_notme
+         subq.w   #1,d4                               ; Account for the ':' that was read
+         bsr      rdnum
+         bne      pop_notme
+         adda.w   #6,a7             ; Ditch saved string length (.w) and pointer to start of string (.l)
+         move.l   #$40,d1           ; reserve space for the channel definition block
          movea.w  mm_alchp,a4
          move.l   a0,-(a7)          ; Save the A0 from entry to open just in case the allocation fails
          jsr      (a4)
          bne      ra0ext
          addq.l   #4,a7             ; Ditch the saved A0, we won't need it any more
          move.l   #$20000,$22(a0)    ; Set up the screen buffer as the memory area this driver writes/reads
-; Now copy the parsed parameters from the driver linkage block to this channel's definition block
-; Ip address is changed from word sized numbers to byte sized numbers
-copyip   move.w   (a3)+,d1
-         move.b   d1,$18(a0,d0.w)
-         addq.b   #1,d0
-         cmpi.b   #4,d0
-         blt      copyip
-; Copy the port number
-         move.w   (a3)+,$1c(a0)
+; Save ip address and port in driver linkage block
+         move.l   d7,$18(a0)        ; ip address
+         move.w   d2,$1c(a0)
          bra      io_ready
 ra0ext   move.l   (a7)+,a0          ; Restore A0 and exit
          rts

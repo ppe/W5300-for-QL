@@ -3,51 +3,7 @@
 ; a2 points to string passed to driver in open call, e.g. "udp_127.0.0.1:80" preceded
 ; by a length word
 match_udp_drv_name
-         bsr      cmpic
-         bne      udp_drv_no_match
-         move.w   (a2),d4                             ; Length of string to d4
-         movea.l  a2,a1
-         adda.w   #6,a1                               ; a1 now points to anything after 'udp_'
-         subq.w   #4,d4                               ; We consumed the first four bytes when we recognized 'udp_'
-         bsr      read_ip_address                     ; updates d4
-         beq      ip_address_known
-         move.w   (a2),d4
-         movea.l  a2,a1
-         adda.w   #6,a1                               ; a1 now points to anything after 'udp_'
-         subq.w   #4,d4                               ; We consumed the first four bytes when we recognized 'udp_'
-         bsr      resolve_host_name
-         bne      udp_drv_no_match
-ip_address_known
-         cmpi.w   #2,d4                               ; There should be at least two more characters for ':' + port number
-         blt      udp_drv_no_match
-         move.b   (a1)+,d1
-         cmpi.b   #':',d1
-         bne      udp_drv_no_match
-         subq.w   #1,d4                               ; Account for the ':' that was read
-         bsr      rdnum
-         bne      udp_drv_no_match
-         moveq    #0,d0
-         rts
-udp_drv_no_match
-         moveq    #-1,d0
-         rts
-cmpic    moveq    #1,d0                               ; Default return code: error
-         moveq    #2,d1                               ; driver name is three characters long
-         move.w   (a2),d2
-; Candidate name should be at least four characters long ('udp_') to have any chance of matching
-         cmpi.w   #3,d2
-         bls      cmpiexit
-cmploop  move.b   0(a1,d1.w),d4
-         cmp.b    2(a2,d1.w),d4
-         beq      cmplend
-         add.b    #$20,d4                             ; to lowercase: 'A' = $41, 'a'=$61
-         cmp.b    2(a2,d1.w),d4
-         bne      cmpiexit
-cmplend  dbf      d1,cmploop
-         cmpi.b   #'_',6(a2,d1.w)
-         bne      cmpiexit
-         moveq    #0,d0
-cmpiexit rts
+; deleted...
 isnum    moveq    #1,d0
          cmpi.b   #$30,d1
          blt      notnum
@@ -69,7 +25,12 @@ rdnloop  cmp.w    d4,d3
          bne      rdldone
          sub.b    #$30,d1
          ext.w    d1
-         mulu     #10,d2
+;         mulu     #10,d2                 ; 42+2n (n=# 1's in ea) = 46 clocks + ea (8, imm) = 54 clocks, 4 reads from mem
+         move.w   d2,d5                   ; 8 clocks, 2 reads
+         asl.w    #3,d2                   ; 10+2n = 16 clocks, 2 reads
+         add.w    d5,d2                   ; 8 clocks + ea (0, Dn direct), 2 reads
+         add.w    d5,d2                   ; 8 clocks + ea (0, Dn direct), 2 reads
+; end mulu #10,d2, total 40 clocks, 8 reads
          add.w    d1,d2
          addq.w   #1,d3
          bra      rdnloop
