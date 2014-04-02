@@ -4,26 +4,63 @@ target_len  equ     100
             lea     target,a3
             movea.l a3,a0                       ; Save target buffer address
             bsr     reset_target
-            lea     puup_len,a4
+            lea     sngl_len,a4
             move.w  (a4)+,d1
             jsr     address_to_query_format
+            lea     sngl_exp,a1
+            bsr     verify_result
+            beq     root_test
+            lea     sngl_msg,a1
+            bra     test_failed
+root_test
             bsr     reset_target
             lea     root_len,a4
             move.w  (a4)+,d1
             jsr     address_to_query_format
+            lea     root_exp,a1
+            bsr     verify_result
+            beq     hut_test
+            lea     root_msg,a1
+            bra     test_failed
+hut_test
             bsr     reset_target
             lea     hut_len,a4
             move.w  (a4)+,d1
             jsr     address_to_query_format
+            lea     hut_exp,a1
+            bsr     verify_result
+            beq     full_test
+            lea     hut_msg,a1
+            bra     test_failed
+full_test
             bsr     reset_target
             lea     full_len,a4
             move.w  (a4)+,d1
             jsr     address_to_query_format
+            lea     full_exp,a1
+            bsr     verify_result
+            beq     illegal_label_test
+            lea     full_msg,a1
+            bra     test_failed
+illegal_label_test
             bsr     reset_target
             lea     illegal_len,a4
             move.w  (a4)+,d1
             jsr     address_to_query_format
+            cmpi.b  #2,d0
+            beq     end_test
+            lea     illegal_msg,a1
+            bra     test_failed
+end_test
             moveq   #0,d0
+            rts
+test_failed
+            moveq   #IO_SSTRG,d0
+            move.w  (a1)+,d2                          ; Length of String
+            move.w  #0,d3                             ; Timeout
+            movea.l #0,a0                             ; Channel ID
+            trap    #3
+            moveq   #-1,d0
             rts
 reset_target
             move.w  #target_len-1,d0
@@ -33,15 +70,48 @@ reset_target_loop
             dbra    d0,reset_target_loop
             movea.l a0,a3
             rts
+verify_result
+            movea.l a0,a2
+            move.w  (a1)+,d0
+            subq.w  #1,d0
+verify_loop
+            move.b  (a2)+,d1
+            cmp.b   (a1)+,d1
+            bne     not_same
+            dbra    d0,verify_loop
+            moveq   #0,d0
+            rts
+not_same
+            moveq   #1,d0
+            rts
+
             in      mdv3_resolv_asm
-puup_len    dc.w    4
-puup        dc.w    'puup'
+sngl_len    dc.w    5
+sngl        dc.w    'label'
+sngl_exp    dc.w    7
+            dc.b    5,'label',0
+sngl_msg    dc.w    17
+            dc.b    'FAIL: single label no terminator.',10
 root_len    dc.w    1
 root        dc.w    '.'
+root_exp    dc.w    1
+            dc.b    0
+root_msg    dc.w    8
+            dc.b    'FAIL: .',10
 hut_len     dc.w    10
 hut         dc.w    'www.hut.fi'
+hut_exp     dc.w    12
+            dc.b    3,'www',3,'hut',2,'fi',0
+hut_msg     dc.w    17
+            dc.b    'FAIL: www.hut.fi',10
 full_len    dc.w    11
 full        dc.w    'www.hut.fi.'
+full_exp    dc.w    12
+            dc.b    3,'www',3,'hut',2,'fi',0
+full_msg    dc.w    18
+            dc.b    'FAIL: www.hut.fi.',10
 illegal_len dc.w    7
 illegal_adr dc.w    'www..fi'
+illegal_msg dc.w    33
+            dc.b    'FAIL: illegal label test failed.',10
 target      ds.l    target_len
