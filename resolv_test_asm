@@ -1,0 +1,47 @@
+;            lea     name,a4
+;            jsr     create_dns_query_buffer
+target_len  equ     100
+            lea     target,a3
+            movea.l a3,a0                       ; Save target buffer address
+            bsr     reset_target
+            lea     puup_len,a4
+            move.w  (a4)+,d1
+            jsr     address_to_query_format
+            bsr     reset_target
+            lea     root_len,a4
+            move.w  (a4)+,d1
+            jsr     address_to_query_format
+            bsr     reset_target
+            lea     hut_len,a4
+            move.w  (a4)+,d1
+            jsr     address_to_query_format
+            bsr     reset_target
+            lea     full_len,a4
+            move.w  (a4)+,d1
+            jsr     address_to_query_format
+            bsr     reset_target
+            lea     illegal_len,a4
+            move.w  (a4)+,d1
+            jsr     address_to_query_format
+            moveq   #0,d0
+            rts
+reset_target
+            move.w  #target_len-1,d0
+            movea.l a0,a3
+reset_target_loop
+            move.l  #$FFFFFFFF,(a3)+
+            dbra    d0,reset_target_loop
+            movea.l a0,a3
+            rts
+            in      mdv3_resolv_asm
+puup_len    dc.w    4
+puup        dc.w    'puup'
+root_len    dc.w    1
+root        dc.w    '.'
+hut_len     dc.w    10
+hut         dc.w    'www.hut.fi'
+full_len    dc.w    11
+full        dc.w    'www.hut.fi.'
+illegal_len dc.w    7
+illegal_adr dc.w    'www..fi'
+target      ds.l    target_len

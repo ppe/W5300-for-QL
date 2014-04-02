@@ -13,10 +13,9 @@ TYPE_A   equ      1
 CLASS_IN equ      1
 ; Calculate the number of bytes required for the dns query message including trailing and leading byte of message string null and dns header
 ; and query record trailer
-; news.lekane.com is converted to 0x04news0x06lekane0x03com0x00 (0xNN a single byte with hex value NN)
 create_dns_query_buffer
          move.w   (a4),d1
-         add.b    #dns_qhl+dns_qqt+2,d1
+         add.w    #dns_qhl+dns_qqt+2,d1
          move.w   d1,d5                               ; Save total length in d5 where it will be returned to caller
          move.b   #MT_ALCHP,d0
          moveq    #-1,d2                              ; Current job
@@ -41,28 +40,60 @@ fill_header
 set_header_flags
          move.w   #0,2(a2)                            ; Reset all flags
          bset     #0,2(a2)                            ; Recursion desired
-convert_address
-         move.b   #0,dns_qhl+1(a2,d1.w)               ; Terminate the converted string with a null
-         tst.w    d1                                  ; If length of string is zero then we are done
-         beq      convert_done
-         moveq    #0,d2                               ; d2 = count of characters in current domain name element
-copy_loop
-         move.b   0(a4,d1.w),d4
-         cmpi.b   #'.',d4
-         bne      copy_char
-         move.b   d2,dns_qhl+1(a2,d1.w)
-         moveq    #0,d2
-         bra      copy_loop_test
-copy_char
-         move.b   d4,dns_qhl+1(a2,d1.w)
-         addq.b   #1,d2
-copy_loop_test
-         dbf      d1,copy_loop
-         move.b   d2,dns_qhl+1(a2,d1.w)      ; Set the first byte to run length of first element (d1==-1 after loop)
-convert_done
-;         move.b   #MT_RECHP,d0
-;         trap     #1
+         movea.l  dns_qhl(a2),a3
+; Convert an address to the DNS question format
+; E.g. news.lekane.com is converted to 0x04news0x06lekane0x03com0x00 (0xNN a single byte with hex value NN)
+; Parameters
+; a3 should point to beginning of buffer where the converted address should be written to
+; N.B: at least one byte of space should be available for the case when the address in question is '.'
+; a4 points to start of string to be converted
+; d1.w contains length of string to be converted
+; Returns:
+; d0=0 means conversion succeeded
+; d0=1 means the string to be converted was empty, target buffer is not written to
+; d0=2 means string to be converted was an illegal dns name, e.g. ".."
+address_to_query_format
+         tst.w    d1
+         beq      convert_empty_string
+         move.w   d1,d4
+         subq.w   #1,d1                               ; Set up for dbra loop which runs until d1==-1
+         movea.l  a4,a1
+         moveq    #0,d3                               ; d3 == length of current label (== part of dns address)
+cloop
+         move.b   (a4)+,d2
+         cmpi.b   #'.',d2
+         beq      cloop_end_label
+         addq.w   #1,d3
+         dbra     d1,cloop
+         bra      clabel_write_label
+cloop_end_label
+         cmpi.w   #0,d1                               ; Is this the last character of the address?
+         bne      cloop_test_illegal                  ; If not, test for illegal label preceding this label terminator
+         cmpi.w   #1,d4                               ; It is last char: was the original length of address == 1
+         beq      convert_add_null_terminator         ; Then we have address '.' which is a valid query, add null and terminate
+cloop_test_illegal
+         tst.w    d3                                  ; Check if current label is empty
+         beq      convert_illegal_label               ; '..' in an address is illegal
+clabel_write_label
+         move.b   d3,(a3)+                            ; Write label length to target
+         subq.w   #1,d3
+clabel_loop
+         move.b   (a1)+,(a3)+
+         dbra     d3,clabel_loop
+         moveq    #0,d3                               ; Reset label length to zero, i.e. begin new label
+         tst.w    d1
+         blt      convert_add_null_terminator         ; This was the last label in the address without an ending '.'
+         adda.l   #1,a1                               ; Skip over the '.' in source string
+         dbra     d1,cloop
+convert_add_null_terminator
+         move.b   #0,(a3)
          moveq    #0,d0
+         rts
+convert_empty_string
+         moveq    #1,d0
+         rts
+convert_illegal_label
+         moveq    #2,d0
          rts
 alloc_fail
          moveq    #-1,d0
