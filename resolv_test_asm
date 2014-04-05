@@ -48,9 +48,18 @@ illegal_label_test
             move.w  (a4)+,d1
             jsr     address_to_query_format
             cmpi.b  #2,d0
-            beq     end_test
+            beq     buffer_test
             lea     illegal_msg,a1
             bra     test_failed
+buffer_test
+            lea     hut_len,a4
+            bsr     create_dns_query_buffer
+            beq     free_buffer
+            lea     buffer_test_failed_msg,a1
+            bra     test_failed
+free_buffer
+            moveq    #MT_RECHP,d0
+            trap     #1
 end_test
             moveq   #0,d0
             rts
@@ -114,4 +123,7 @@ illegal_len dc.w    7
 illegal_adr dc.w    'www..fi'
 illegal_msg dc.w    33
             dc.b    'FAIL: illegal label test failed.',10
+buffer_test_failed_msg
+            dc.w    34
+            dc.b    'FAIL: DNS buffer creation failed.',10
 target      ds.l    target_len

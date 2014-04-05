@@ -15,22 +15,27 @@ CLASS_IN equ      1
 ; and query record trailer
 create_dns_query_buffer
          move.w   (a4),d1
-         add.w    #dns_qhl+dns_qqt+2,d1
+         add.w    #dns_qhl+dns_qqt+2,d1               ; Two extra bytes for 'label' -> '0x05label0x00'
          move.w   d1,d5                               ; Save total length in d5 where it will be returned to caller
          move.b   #MT_ALCHP,d0
          moveq    #-1,d2                              ; Current job
          trap     #1
          tst.l    d0
-         bne      alloc_fail
+         bne      alloc_fail                          ; Got less than the requested # of bytes
+         cmp.l    d5,d1
+         bcs      alloc_fail_release                  ; Did we get the number of bytes requested
 ; a0 now points to allocated buffer area and a1 still points to start of address to resolve
          movea.l  a0,a2                               ; a2 used as base address for copying into
 insert_trailer
          move.w   (a4)+,d1                            ; Length of string that was passed in
+         lea      dns_qhl(a2),a3
+         bsr      address_to_query_format
+         bne      alloc_fail_release                  ; If conversion failed then release memory and exit with error
 ; N.B. query name is not necessarily word-aligned so we can't use word sized operations in the following
-         move.b   #0,dns_qhl+2(a2,d1.w)
-         move.b   #TYPE_A,dns_qhl+3(a2,d1.w)          ; query for A records
-         move.b   #0,dns_qhl+4(a2,d1.w)
-         move.b   #CLASS_IN,dns_qhl+5(a2,d1.w)        ; Class Internet
+         move.b   #0,(a3)+
+         move.b   #TYPE_A,(a3)+                       ; query for A records
+         move.b   #0,(a3)+
+         move.b   #CLASS_IN,(a3)+                     ; Class Internet
 fill_header
          move.w   #0,(a2)                             ; Id for query. TODO: fill in ID of current job
          move.w   #1,4(a2)                            ; Number of questions
@@ -40,7 +45,8 @@ fill_header
 set_header_flags
          move.w   #0,2(a2)                            ; Reset all flags
          bset     #0,2(a2)                            ; Recursion desired
-         movea.l  dns_qhl(a2),a3
+         moveq    #0,d0
+         rts
 ; Convert an address to the DNS question format
 ; E.g. news.lekane.com is converted to 0x04news0x06lekane0x03com0x00 (0xNN a single byte with hex value NN)
 ; Parameters
@@ -55,6 +61,8 @@ set_header_flags
 address_to_query_format
          tst.w    d1
          beq      convert_empty_string
+         cmpi.w   #255,d1                             ; Maximum total length of name is 255 bytes says the RFC
+         bhi      convert_name_too_long
          move.w   d1,d4
          subq.w   #1,d1                               ; Set up for dbra loop which runs until d1==-1
          movea.l  a4,a1
@@ -74,6 +82,8 @@ cloop_end_label
 cloop_test_illegal
          tst.w    d3                                  ; Check if current label is empty
          beq      convert_illegal_label               ; '..' in an address is illegal
+         cmpi.w   #63,d3
+         bhi      convert_illegal_label               ; Max length of a single label is 63 bytes (RFC 1035)
 clabel_write_label
          move.b   d3,(a3)+                            ; Write label length to target
          subq.w   #1,d3
@@ -86,7 +96,7 @@ clabel_loop
          adda.l   #1,a1                               ; Skip over the '.' in source string
          dbra     d1,cloop
 convert_add_null_terminator
-         move.b   #0,(a3)
+         move.b   #0,(a3)+
          moveq    #0,d0
          rts
 convert_empty_string
@@ -95,6 +105,13 @@ convert_empty_string
 convert_illegal_label
          moveq    #2,d0
          rts
+convert_name_too_long
+         moveq    #3,d0
+         rts
+; Allocation returned less bytes than we need - release the allocated block
+alloc_fail_release
+         moveq    #MT_RECHP,d0                        ; and return an error to the caller
+         trap     #1
 alloc_fail
          moveq    #-1,d0
          rts
