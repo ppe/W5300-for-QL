@@ -6,7 +6,6 @@
 ;        d5 = total length of formatted
 ;        a0 = pointer to buffer containing the formatted DNS query
 ;
-
 dns_qhl  equ      12                ; DNS header length is 12 bytes
 dns_qqt  equ      4                 ; Four bytes at end of a query question
 TYPE_A   equ      1
@@ -115,6 +114,50 @@ alloc_fail_release
 alloc_fail
          moveq    #-1,d0
          rts
+; Get an IP address from a UDP response packet
+; Parameter: a3 points to start of response packet which MUST be aligned on a word boundary
+get_ip_from_dns_response
+         move.b   3(a3),d0
+         andi.b   #$0F,d0                             ; Check the response code, should be 0 for no error
+         bne      response_error
+         move.w   4(a3),d2                            ; Number of questions
+         move.w   6(a3),d3                            ; Number of answers in response
+         beq      response_no_answers
+         adda.l   #dns_qhl,a3                          ; Skip over the header and start reading answers
+; while(questions>0)
+         bra      skip_questions_end_test
+skip_over_questions
+         bsr      skip_over_name
+         adda.l   #4,a3                               ; Skip over QTYPE and QCLASS in question
+skip_questions_end_test
+         dbra     d2,skip_over_questions
+; end while
+read_answers_until_A_record_found
+         bsr      skip_over_name
+; Type of resource
+         MWORD    a3,d1
+         cmpi.w   #TYPE_A,d1                          ; Looking for an A record
+         bne      next_answer
+; Class of resource
+         MWORD    a3,d1
+         cmpi.w   #CLASS_IN,d1                        ; Should be "internet"
+         bne      next_answer
+         adda.l   #4,a3                               ; Skip over TTL. TODO: pick this up and use it
+; Length of resource data, should be 4 octets for an IPv4 address
+         MWORD    a3,d1
+         cmpi.w   #4,d1
+         bne      next_answer
+         MWORD    a3,d1
+         swap     d1
+         MWORD    a3,d1
+         moveq    #0,d0
+         rts
+next_answer
+         dbra     d3,read_answers_until_A_record_found
+response_no_answers
+         moveq    #-1,d0
+response_error
+         rts
 ;
 ; Skip over name in DNS format also taking into account the compression scheme in RFC 1035 ch. 4.1.4
 ; Parameters: a3, pointer to start of name, on exit will point to octet immediately following the name
@@ -139,5 +182,3 @@ skip_compression
 unknown_compression
          moveq    #-1,d0
          rts
-
-

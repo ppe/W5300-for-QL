@@ -1,3 +1,4 @@
+            in      mdv3_resolv_macros_asm
 ;            lea     name,a4
 ;            jsr     create_dns_query_buffer
 target_len  equ     100
@@ -153,8 +154,24 @@ buffer_test
             lea     buffer_test_failed_msg,a1
             bra     test_failed
 free_buffer
-            moveq    #MT_RECHP,d0
-            trap     #1
+            moveq   #MT_RECHP,d0
+            trap    #1
+            bra     read_response_test
+read_response_test_msg
+            dc.w    28
+            dc.b    'TEST: read IP from response',10
+read_response_test
+            lea     read_response_test_msg,a1
+            bsr     print_test_name
+            lea     dns_response_data,a3
+            bsr     get_ip_from_dns_response
+            bne     read_response_test_fail
+            cmpi.l  #$82e9e0fe,d1
+            bne     read_response_test_fail
+            bra     end_test
+read_response_test_fail
+            lea     read_response_fail_msg,a1
+            bra     test_failed
 end_test
             moveq   #0,d0
             rts
@@ -197,7 +214,7 @@ verify_loop
 not_same
             moveq   #1,d0
             rts
-
+;
             in      mdv3_resolv_asm
 sngl_len    dc.w    5
 sngl        dc.w    'label'
@@ -242,10 +259,16 @@ skip_compress_msg
 illegal_compress_msg
             dc.w    32
             dc.b    'FAIL: illegal compressed entry.',10
+read_response_fail_msg
+            dc.w    36
+            dc.b    'FAIL: read IP from response packet.',10
 illegal_compress_data
             dc.w    $80FF
 compress_data
             dc.w    $FFFF
 compress_end
             dc.w    0
+; Wireshark capture of response to query www.hut.fi resolving to IPv4 address 130.233.224.254
+dns_response_data
+            dc.l    $00028180,$00010001,$0,$03777777,$03687574,$02666900,$00010001,$c00c0001,$00010000,$011e0004,$82e9e0fe
 target      ds.l    target_len
