@@ -3,6 +3,13 @@
 target_len  equ     100
             lea     target,a3
             movea.l a3,a0                       ; Save target buffer address
+            bra     single_test
+single_test_msg
+            dc.w    14
+            dc.b    'TEST: "label"',10
+single_test
+            lea     single_test_msg,a1
+            bsr     print_test_name
             bsr     reset_target
             lea     sngl_len,a4
             move.w  (a4)+,d1
@@ -12,7 +19,12 @@ target_len  equ     100
             beq     root_test
             lea     sngl_msg,a1
             bra     test_failed
+root_test_msg
+            dc.w    10
+            dc.b    'TEST: "."',10
 root_test
+            lea     root_test_msg,a1
+            bsr     print_test_name
             bsr     reset_target
             lea     root_len,a4
             move.w  (a4)+,d1
@@ -22,7 +34,12 @@ root_test
             beq     hut_test
             lea     root_msg,a1
             bra     test_failed
+hut_test_msg
+            dc.w    19
+            dc.b    'TEST: "www.hut.fi"',10
 hut_test
+            lea     hut_test_msg,a1
+            bsr     print_test_name
             bsr     reset_target
             lea     hut_len,a4
             move.w  (a4)+,d1
@@ -32,7 +49,12 @@ hut_test
             beq     full_test
             lea     hut_msg,a1
             bra     test_failed
+full_test_msg
+            dc.w    20
+            dc.b    'TEST: "www.hut.fi."',10
 full_test
+            lea     full_test_msg,a1
+            bsr     print_test_name
             bsr     reset_target
             lea     full_len,a4
             move.w  (a4)+,d1
@@ -42,16 +64,89 @@ full_test
             beq     illegal_label_test
             lea     full_msg,a1
             bra     test_failed
+illegal_label_test_msg
+            dc.w    16
+            dc.b    'TEST: "www..fi"',10
 illegal_label_test
+            lea     illegal_label_test_msg,a1
+            bsr     print_test_name
             bsr     reset_target
             lea     illegal_len,a4
             move.w  (a4)+,d1
             jsr     address_to_query_format
             cmpi.b  #2,d0
-            beq     buffer_test
+            beq     skip_hut_test
             lea     illegal_msg,a1
             bra     test_failed
+skip_hut_test_msg
+            dc.w    29
+            dc.b    'TEST: skip over "www.hut.fi"',10
+skip_hut_test
+            lea     skip_hut_test_msg,a1
+            bsr     print_test_name
+            lea     hut_exp+2,a3
+            bsr     skip_over_name
+            bne     skip_hut_test_fail
+            lea     hut_msg,a1
+            cmpa.l  a1,a3
+            bne     skip_hut_test_fail
+            beq     skip_root_test
+skip_hut_test_fail
+            lea     skip_hut_msg,a1
+            bra     test_failed
+skip_root_test_msg
+            dc.w    20
+            dc.b    'TEST: skip over "."',10
+skip_root_test
+            lea     skip_root_test_msg,a1
+            bsr     print_test_name
+            lea     root_exp+2,a3
+            bsr     skip_over_name
+            bne     skip_root_test_fail
+            lea     root_exp+3,a1
+            cmpa.l  a1,a3
+            bne     skip_root_test_fail
+            beq     skip_compress_test
+skip_root_test_fail
+            lea     skip_root_msg,a1
+            bra     test_failed
+skip_compress_test_msg
+            dc.w    28
+            dc.b    'TEST: skip compressed label',10
+skip_compress_test
+            lea     skip_compress_test_msg,a1
+            bsr     print_test_name
+            lea     compress_data,a3
+            bsr     skip_over_name
+            bne     skip_compress_test_fail
+            lea     compress_end,a1
+            cmpa.l  a1,a3
+            bne     skip_compress_test_fail
+            beq     illegal_compress_test
+skip_compress_test_fail
+            lea     skip_compress_msg,a1
+            bra     test_failed
+illegal_compress_test_msg
+            dc.w    31
+            dc.b    'TEST: illegal compressed label',10
+illegal_compress_test
+            lea     illegal_compress_test_msg,a1
+            bsr     print_test_name
+            lea     illegal_compress_data,a3
+            bsr     skip_over_name
+            beq     illegal_compress_test_fail
+            cmpi.b  #-1,d0
+            bne     illegal_compress_test_fail
+            bra     buffer_test
+illegal_compress_test_fail
+            lea     illegal_compress_msg,a1
+            bra     test_failed
+buffer_test_msg
+            dc.w    20
+            dc.b    'TEST: create buffer',10
 buffer_test
+            lea     buffer_test_msg,a1
+            bsr     print_test_name
             lea     hut_len,a4
             bsr     create_dns_query_buffer
             beq     free_buffer
@@ -62,6 +157,15 @@ free_buffer
             trap     #1
 end_test
             moveq   #0,d0
+            rts
+print_test_name
+            movem.l d0-d3/a0-a1,-(a7)
+            moveq   #IO_SSTRG,d0
+            move.w  (a1)+,d2                          ; Length of String
+            move.w  #0,d3                             ; Timeout
+            movea.l #$00010001,a0                     ; Channel ID
+            trap    #3
+            movem.l (a7)+,d0-d3/a0-a1
             rts
 test_failed
             moveq   #IO_SSTRG,d0
@@ -123,7 +227,25 @@ illegal_len dc.w    7
 illegal_adr dc.w    'www..fi'
 illegal_msg dc.w    33
             dc.b    'FAIL: illegal label test failed.',10
+skip_hut_msg
+            dc.w    28
+            dc.b    'FAIL: skip over www.hut.fi.',10
+skip_root_msg
+            dc.w    20
+            dc.b    'FAIL: skip over "."',10
 buffer_test_failed_msg
             dc.w    34
             dc.b    'FAIL: DNS buffer creation failed.',10
+skip_compress_msg
+            dc.w    29
+            dc.b    'FAIL: skip compressed entry.',10
+illegal_compress_msg
+            dc.w    32
+            dc.b    'FAIL: illegal compressed entry.',10
+illegal_compress_data
+            dc.w    $80FF
+compress_data
+            dc.w    $FFFF
+compress_end
+            dc.w    0
 target      ds.l    target_len
