@@ -1,0 +1,97 @@
+100 base=HEX("18000"):curr_sck_no=0
+110 setup_windows
+130 REPeat cmd_loop
+132 render_common_status
+135 render_socket(curr_sck_no)
+140 keycode=CODE(INKEY$(-1))
+145 PRINT#0,'Keycode: '&keycode
+150 IF (keycode=200) AND curr_sck_no < 7 THEN curr_sck_no = curr_sck_no + 1
+160 IF (keycode=192) AND curr_sck_no > 0 THEN curr_sck_no = curr_sck_no - 1
+180 END REPeat cmd_loop
+1000 DEFine PROCedure render_common_status
+1010 AT#3,0,0:PRINT #3,'ID:   '&id_str$
+1020 AT#3,1,0:PRINT #3,'MAC:  '&shar_str$
+1030 AT#3,2,0:PRINT #3,'IP:   '&ip_str$(base+24)
+1040 AT#3,3,0:PRINT #3,'GW:   '&ip_str$(base+16)
+1050 AT#3,4,0:PRINT #3,'MASK: '&ip_str$(base+20)
+1060 AT#3,0,25:PRINT #3,'Memory config:'
+1065 AT#3,1,25:PRINT #3,'SCK# TX    RX'
+1070 FOR i=0 TO 7
+1075 AT#3,i+2,25:PRINT #3,i
+1080 AT#3,i+2,30:PRINT_USING #3,'## kB',PEEK(base+32+i)
+1090 AT#3,i+2,36:PRINT_USING #3,'## kB',PEEK(base+40+i)
+1100 END FOR i
+1110 END DEFine 
+8000 DEFine PROCedure setup_windows
+8010 OPEN #3,SCR_400x200a10x10
+8020 PAPER #3,4:CLS #3
+8030 INK #3,0
+8035 BORDER #3,1,7
+8040 END DEFine setup_windows
+9000 DEFine FuNction shar_str$
+9010 RETurn mac_str$(base+8)
+9020 END DEFine shar_str$
+9100 DEFine FuNction ip_str$ (address)
+9110 LOCal result$
+9120 result$=''
+9130 FOR i=0 TO 3
+9140 result$=result$&PEEK(address+i)&'.'
+9150 END FOR i
+9160 RETurn result$(1 TO LEN(result$)-1)
+9170 END DEFine ip_str$
+9200 DEFine FuNction id_str$
+9210 RETurn HEX$(PEEK_W(base+254),16)
+9220 END DEFine id_str$
+9300 DEFine FuNction mac_str$ (address)
+9310 LOCal mac$
+9320 mac$=""
+9330 FOR i=0 TO 5
+9340 mac$=mac$&HEX$(PEEK(address+i),8)&':'
+9350 END FOR i
+9370 RETurn mac$(1 TO 17)
+9380 END DEFine mac_str$
+10000 DEFine PROCedure render_socket (sck_no)
+10010 sck_base_addr=base+512+sck_no*64
+10020 AT#3,11,1:PRINT#3,'SOCKET #'&sck_no
+10030 AT#3,12,1:PRINT#3,'Mode:     '&sck_mode_str$(sck_base_addr)
+10040 AT#3,13,1:PRINT#3,'Status:   '&sck_stat_str$(sck_base_addr)
+10050 AT#3,14,1:PRINT#3,'Src port: '&PEEK_W(sck_base_addr+10)
+10060 AT#3,14,25:PRINT#3,'Dst MAC: '&shar_str$(sck_base_addr+12)
+10070 AT#3,15,25:PRINT#3,'Dst IP:  '&ip_str$(sck_base_addr+20)
+10080 AT#3,17,1:PRINT#3,'RX bytes available: '&((PEEK(sck_base_addr+41)&&1)*65536+PEEK_W(sck_base_addr+42))
+10999 END DEFine render_socket
+11000 DEFine FuNction sck_mode_str$ (sck_base)
+11010 LOCal sck_mode
+11020 sck_mode = PEEK(sck_base+1) && 15
+11030 SELect ON sck_mode
+11040 ON sck_mode = 0:RETurn "Closed"
+11060 ON sck_mode = 1:RETurn "TCP"
+11080 ON sck_mode = 2:RETurn "UDP"
+11100 ON sck_mode = 3:RETurn "IP RAW"
+11120 ON sck_mode = 4:RETurn "MAC RAW"
+11140 ON sck_mode = 5:RETurn "PPPoE"
+11160 ON sck_mode = REMAINDER :RETurn "Unknown ("&sck_mode&")"
+11180 END SELect 
+11190 END DEFine 
+12000 DEFine FuNction sck_stat_str$ (sck_base)
+12010 LOCal sck_stat
+12020 sck_stat = PEEK(sck_base+9)
+12030 SELect ON sck_stat
+12040 ON sck_stat = 0:RETurn "SOCK_CLOSED"
+12050 ON sck_stat = 19:RETurn "SOCK_INIT"
+12060 ON sck_stat = 20:RETurn "SOCK_LISTEN"
+12070 ON sck_stat = 23:RETurn "SOCK_ESTABLISHED"
+12080 ON sck_stat = 28:RETurn "SOCK_CLOSE_WAIT"
+12090 ON sck_stat = 34:RETurn "SOCK_UDP"
+12100 ON sck_stat = 50:RETurn "SOCK_IPRAW"
+12110 ON sck_stat = 66:RETurn "SOCK_MACRAW"
+12120 ON sck_stat = 95:RETurn "SOCK_PPPoE"
+12130 ON sck_stat = 21:RETurn "SOCK_SYNSENT"
+12140 ON sck_stat = 22:RETurn "SOCK_SYNRECV"
+12150 ON sck_stat = 24:RETurn "SOCK_FIN_WAIT"
+12160 ON sck_stat = 27:RETurn "SOCK_TIME_WAIT"
+12170 ON sck_stat = 29:RETurn "SOCK_LAST_ACK"
+12180 ON sck_stat = 1:RETurn "SOCK_ARP"
+12190 ON sck_stat = REMAINDER :RETurn "Unknown ("&sck_stat&")"
+12200 END SELect 
+12210 END DEFine 
