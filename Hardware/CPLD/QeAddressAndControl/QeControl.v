@@ -49,11 +49,11 @@ module QeControl(
 	 );
 	 
 	assign expansionAddress = (address[9:8] == 2'h0);
-	assign cardAddressActive = (address[7:4] == 4'b0100) && expansionAddress && !asl;
+	assign cardAddressActive = (address[7:4] == 4'b0100) && expansionAddress;
 	assign wiznetAddressActive = cardAddressActive && address[3:0] == 4'b1000;
 	assign resetRequested = cardAddressActive && address[3:0] == 4'b1100 && rdwl == 0;
 	assign dtackl = ( !dbenl && !dsl ) ? 0 : 1'bZ ;
-	assign dsmcl = (cardAddressActive && !asl) ? 1 : 1'bZ;
+	assign dsmcl = (cardAddressActive && !dsl) ? 1 : 0;
 	assign dbenl = !cardAddressActive;
 	assign dbdir = rdwl;
 	assign wizcsl = !(wiznetAddressActive && !dsl);
