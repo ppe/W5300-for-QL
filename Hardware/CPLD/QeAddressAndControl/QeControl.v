@@ -49,14 +49,14 @@ module QeControl(
 	 );
 	 
 	assign expansionAddress = (address[9:8] == 2'b11);
-	assign cardAddressActive = (address[7:4] == 4'b0010) && expansionAddress;
+	assign cardAddressActive = (address[7:4] == 4'b0010) && expansionAddress && !asl;
 	assign wiznetAddressActive = cardAddressActive && address[3:0] == 4'b0000;
 	assign resetRequested = cardAddressActive && address[3:0] == 4'b0100 && rdwl == 0;
 	assign dtackl = ( !dbenl && !dsl ) ? 0 : 1'bZ ;
-	assign dsmcl = (cardAddressActive && !dsl) ? 1 : 0;
+	assign dsmcl = (cardAddressActive && !dsl) ? 1 : 1'bZ;
 	assign dbenl = !cardAddressActive;
 	assign dbdir = rdwl;
-	assign wizcsl = !(wiznetAddressActive && !dsl);
+	assign wizcsl = !(wiznetAddressActive && !asl);
 	assign wizrdl = !rdwl;
 	assign wizwrl = rdwl;
 	assign trigger_wiz_reset = resetRequested;
