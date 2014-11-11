@@ -97,6 +97,14 @@ module QeControlTest;
 		asl = 1;
 		rdwl=1;
 		#50;
+		address = 10'b1100100000;
+		asl = 0;
+		#50;
+		dsl = 0;
+		#50;
+		dsl = 1;
+		asl = 1;
+		#50;
 		address = 10'b1100100100;
 		asl = 0;
 		rdwl=0;
@@ -123,6 +131,10 @@ module QeControlTest;
 		#50;
 		dsl = 1;
 		asl = 1;
+		#50
+		rdwl=1;
+		#200
+		rdwl = 0;
 	end
    always begin
 		#5 clk = ~clk;

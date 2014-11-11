@@ -52,12 +52,12 @@ module QeControl(
 	assign cardAddressActive = (address[7:4] == 4'b0010) && expansionAddress && !asl;
 	assign wiznetAddressActive = cardAddressActive && address[3:0] == 4'b0000;
 	assign resetRequested = cardAddressActive && address[3:0] == 4'b0100 && rdwl == 0;
-	assign dtackl = ( !dbenl && !dsl ) ? 0 : 1'bZ ;
+	assign dtackl = ( cardAddressActive && !dsl ) ? 0 : 1'bZ ;
 	assign dsmcl = cardAddressActive;
-	assign dbenl = !(cardAddressActive && !dsl);
+	assign dbenl = !(wiznetAddressActive && !dsl);
 	assign dbdir = rdwl;
-	assign wizcsl = !(wiznetAddressActive && !asl);
-	assign wizrdl = !rdwl;
-	assign wizwrl = rdwl;
+	assign wizcsl = !(wiznetAddressActive && !dsl);
+	assign wizrdl = !(wiznetAddressActive && !dsl && rdwl);
+	assign wizwrl = !(wiznetAddressActive && !dsl && !rdwl);
 	assign trigger_wiz_reset = resetRequested && !asl;
 endmodule
