@@ -26,13 +26,13 @@ module QeControl(
     input dsl,
     input rdwl,
 	 input clk,
-    output dtackl,
+    output reg dtackl,
     output dsmcl,
-    output dbenl,
+    output reg dbenl,
     output dbdir,
-    output wizcsl,
-    output wizrdl,
-    output wizwrl,
+    output reg wizcsl,
+    output reg wizrdl,
+    output reg wizwrl,
 	 output wizrstl
     );
 
@@ -48,16 +48,18 @@ module QeControl(
 		.w5300_resetl(wizrstl)
 	 );
 	 
-	assign expansionAddress = (address[9:8] == 2'b11);
-	assign cardAddressActive = (address[7:4] == 4'b0010) && expansionAddress && !asl;
-	assign wiznetAddressActive = cardAddressActive && address[3:0] == 4'b0000;
-	assign resetRequested = cardAddressActive && address[3:0] == 4'b0100 && rdwl == 0;
-	assign dtackl = ( cardAddressActive && !dsl ) ? 0 : 1'bZ ;
+	assign expansionAddress = (address[9:8] == 2'b00);
+	assign cardAddressActive = (address[7:4] == 4'b0100) && expansionAddress && !asl;
+	assign wiznetAddressActive = cardAddressActive && address[3:0] == 4'b1000;
+	assign resetRequested = cardAddressActive && address[3:0] == 4'b1100 && rdwl == 0;
 	assign dsmcl = cardAddressActive;
-	assign dbenl = !(wiznetAddressActive && !dsl);
 	assign dbdir = rdwl;
-	assign wizcsl = !(wiznetAddressActive && !dsl);
-	assign wizrdl = !(wiznetAddressActive && !dsl && rdwl);
-	assign wizwrl = !(wiznetAddressActive && !dsl && !rdwl);
 	assign trigger_wiz_reset = resetRequested && !asl;
+	always @(posedge clk) begin
+		dtackl = !( cardAddressActive && !dsl );
+		dbenl = !(wiznetAddressActive && !dsl);
+		wizcsl = !(wiznetAddressActive && !dsl);
+		wizrdl = !(wiznetAddressActive && !dsl && rdwl);
+		wizwrl = !(wiznetAddressActive && !dsl && !rdwl);
+	end
 endmodule
