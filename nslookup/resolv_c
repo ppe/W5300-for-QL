@@ -224,7 +224,7 @@ uint32 findIp(uint8 * buf) {
     return (uint32)0;
 }
 
-uint32 ngethostbyname(unsigned char *host)
+uint32 ngethostbyname(char *host)
 {
     uint8 *buf,*qname;
     int i , j, pton_result;

@@ -10,7 +10,7 @@
 #define UDP_MSG_BUF_SIZE 2048 /* UDP message buffer size */
 
 /*Function Declarations */
-uint32 ngethostbyname (unsigned char*);
+uint32 ngethostbyname (char*);
 void initW5300();
 
 /*DNS header structure */

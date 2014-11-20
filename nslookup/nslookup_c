@@ -8,6 +8,7 @@ int main()
 	unsigned char hostname[100];
 	
 	initW5300();
+	printf("\nBase address=%08x\n",COMMON_REG_BASE);
 	printf("\nEnter Hostname to Lookup : ");
 	gets((char*)hostname);
 	ipAddress = ngethostbyname(hostname);
