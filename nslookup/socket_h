@@ -28,12 +28,37 @@
  *                                   Modify close(). 
  * ----------  -------  -----------  ----------------------------  
  */
+#include <stdlib.h>
+
 #include "types_h"
 #include "w5300_h"
 
 /**********************************
  * define function of SOCKET APIs * 
  **********************************/
+
+/*
+Linux socket compatibility recv flags
+*/
+#define	MSG_OOB		0x1		/* process out-of-band data */
+#define	MSG_PEEK	0x2		/* peek at incoming message */
+#define	MSG_DONTROUTE	0x4		/* send without using routing tables */
+#define	MSG_EOR		0x8		/* data completes record */
+#define	MSG_TRUNC	0x10		/* data discarded before delivery */
+#define	MSG_CTRUNC	0x20		/* control data lost before delivery */
+#define	MSG_WAITALL	0x40		/* wait for full request or error */
+
+
+struct peek_cache_entry {
+	size_t bytes_available;
+	void *read_position;
+	void *buffer;
+};
+
+#ifndef min
+#define min(x,y) ((x) > (y) ? (y) : (x))
+#endif
+
 
 /**
  * Open a SOCKET.
@@ -65,11 +90,11 @@ uint8    listen(SOCKET s);
  */
 uint32   send(SOCKET s, uint8 * buf, uint32 len);
 
-
 /**
  * It receives TCP data on a connection SOCKET
  */
-uint32   recv(SOCKET s, uint8 * buf, uint32 len);
+int recv (int s, void *b, uint16 ln, unsigned int flag);
+uint32   recv_w5300(SOCKET s, uint8 * buf, uint32 len);
 
 /**
  * It sends UDP, IPRAW, or MACRAW data 

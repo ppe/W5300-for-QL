@@ -958,7 +958,7 @@ uint32   wiz_write_buf(SOCKET s,uint8* buf,uint32 len);
 /**
  *  It copies data to your buffer from interna RX memory
  */
-uint32   wiz_read_buf(SOCKET s, uint8* buf,uint32 len);
+uint32   wiz_read_buf(SOCKET s, void* buf,uint32 len);
 
 
 /**

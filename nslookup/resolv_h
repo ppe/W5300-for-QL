@@ -12,6 +12,15 @@
 /*Function Declarations */
 uint32 ngethostbyname (char*);
 void initW5300();
+extern void initialize_cache();
+extern unsigned long get_from_cache( char * );
+extern void store_in_cache( char * , unsigned long );
+
+struct dns_cache_entry {
+	unsigned long address;
+	unsigned long refcount;
+	char * hostname;
+};
 
 /*DNS header structure */
 struct DNS_HEADER
@@ -56,12 +65,12 @@ struct RES_RECORD
 {
 	unsigned char *name;
 	struct R_DATA *resource;
-	unsigned char *rdata;
+	char *rdata;
 };
 
 /*Structure of a Query */
 typedef struct
 {
-	unsigned char *name;
+	char *name;
 	struct QUESTION *ques;
 } QUERY;

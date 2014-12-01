@@ -64,6 +64,48 @@ struct http_response
 	char *response_headers;
 };
 
+
+struct http_response * parse_response(char *response) {
+	
+	char *status_line;
+	char *status_code;
+	struct http_response *hresp;
+	char *headers;
+	char *token;
+	char *original_status_line;
+
+	hresp = (struct http_response*)malloc(sizeof(struct http_response));
+	if(hresp == NULL)
+	{
+		printf("Unable to allocate memory for htmlcontent.");
+		return NULL;
+	}
+	hresp->body = NULL;
+	hresp->request_headers = NULL;
+	hresp->response_headers = NULL;
+	hresp->status_code = NULL;
+	hresp->status_text = NULL;
+
+	status_line = get_until(response, "\r\n");
+	original_status_line = status_line;
+	token = strtok(status_line," "); /* HTTP/1.? */
+	token = strtok(NULL," "); /* status code */
+	status_code = strdup(token);
+	token = strtok(NULL," "); /* status text */
+	hresp->status_code = status_code;
+	hresp->status_code_int = atoi(status_code);
+	hresp->status_text = strdup(token);
+	free(original_status_line);
+
+	headers = get_until(response, "\r\n\r\n");
+	hresp->response_headers = headers;
+	{
+		int offset = str_index_of(response, "\r\n\r\n");
+		hresp->body = &(response[offset+4]);
+	}
+	return hresp;
+}
+
 /*
 	Handles redirect if needed for get requests
 */
@@ -149,7 +191,7 @@ struct http_response* http_req(char *http_headers, struct parsed_url *purl)
 {
 	int sock;
 	int tmpres;
-	char buf[BUFSIZ+1];
+	int numrecvs=0;
 	struct http_response *hresp;
 	struct sockaddr_in *remote;
 	int sent = 0;
@@ -159,35 +201,24 @@ struct http_response* http_req(char *http_headers, struct parsed_url *purl)
 	char *headers;
 	char *body;
 	char *response;
-	char BUF[BUFSIZ];
-	size_t recived_len = 0;
-
+	unsigned char *BUF = malloc(2049);
+	size_t received_len = 0;
+	size_t response_len = 0;
+	char input[100];
 
 	/* Parse url */
 	if(purl == NULL)
 	{
 		printf("Unable to parse url");
+	    free(BUF);
 		return NULL;
 	}
-
-
-	/* Allocate memeory for htmlcontent */
-	hresp = (struct http_response*)malloc(sizeof(struct http_response));
-	if(hresp == NULL)
-	{
-		printf("Unable to allocate memory for htmlcontent.");
-		return NULL;
-	}
-	hresp->body = NULL;
-	hresp->request_headers = NULL;
-	hresp->response_headers = NULL;
-	hresp->status_code = NULL;
-	hresp->status_text = NULL;
 
 	/* Create TCP socket */
 	if((sock = socket(1, Sn_MR_TCP, 1234 /* src port */, 0 /* flags */)) < 0)
 	{
 	    printf("Can't create TCP socket");
+	    free(BUF);
 		return NULL;
 	}
 	/* Set remote->sin_addr.s_addr */
@@ -197,32 +228,34 @@ struct http_response* http_req(char *http_headers, struct parsed_url *purl)
 	if(connect(1, (uint8 *)(&(purl->ip)), atoi(purl->port)) <= 0)
 	{
 	    printf("Could not connect");
+	    free(BUF);
 		return NULL;
 	}
 	/* Send headers to server */
-	printf("Send HTTP headers:\n%s\n", http_headers);
-
 	while(sent < strlen(http_headers))
 	{
 	    tmpres = send(1, ((uint8 *)http_headers)+sent, strlen(http_headers)-sent);
 		if(tmpres == -1)
 		{
 			printf("Can't send headers");
+		    free(BUF);
 			return NULL;
 		}
 		sent += tmpres;
 	 }
-	/* Recieve into response*/
+
 	response = (char*)malloc(0);
 
-	while((recived_len = recv(1, (uint8 *)BUF, BUFSIZ-1)) > 0)
+	while((received_len = recv(1, BUF, 2048, 0)) > 0)
 	{
-        BUF[recived_len] = '\0';
-		response = (char*)realloc(response, strlen(response) + strlen(BUF) + 1);
-		sprintf(response, "%s%s", response, BUF);
+		numrecvs++;
+        BUF[received_len] = '\0';
+		response = (char*)realloc(response, response_len + received_len + 1);
+		memcpy(response+response_len, BUF, received_len);
+		response_len += received_len;
 	}
 	/* TODO error handling in socket library?
-	if (recived_len < 0)
+	if (received_len < 0)
     {
 		free(http_headers);
 		#ifdef _WIN32
@@ -234,39 +267,18 @@ struct http_response* http_req(char *http_headers, struct parsed_url *purl)
 		return NULL;
     }
     */
-	/* Reallocate response */
-	response = (char*)realloc(response, strlen(response) + 1);
-	/* Close socket */
+	response = (char*)realloc(response, response_len + 1);
+	response[response_len] = '\0';
+	printf("Received a total of %d bytes with %d recv()s.\n", response_len,numrecvs);
 	#ifdef _WIN32
 		closesocket(sock);
 	#else
 		close(1);
 	#endif
-	/* Parse status code and text */
-
-	status_line = get_until(response, "\r\n");
-	status_line = str_replace("HTTP/1.1 ", "", status_line);
-	status_code = str_ndup(status_line, 4);
-	status_code = str_replace(" ", "", status_code);
-	printf("parsed status code: %s", status_code);
-	status_text = str_replace(status_code, "", status_line);
-	status_text = str_replace(" ", "", status_text);
-	hresp->status_code = status_code;
-	hresp->status_code_int = atoi(status_code);
-	hresp->status_text = status_text;
-	/* Parse response headers */
-
-	headers = get_until(response, "\r\n\r\n");
-	hresp->response_headers = headers;
-	/* Assign request headers */
+	hresp = parse_response(response);
 	hresp->request_headers = http_headers;
-	/* Assign request url */
 	hresp->request_uri = purl;
-	/* Parse body */
-	body = strstr(response, "\r\n\r\n");
-	body = str_replace("\r\n\r\n", "", body);
-	hresp->body = body;
-	/* Return response */
+    free(BUF);
 	return hresp;
 }
 
@@ -293,26 +305,24 @@ struct http_response* http_get(char *url, char *custom_headers)
 	{
 		if(purl->query != NULL)
 		{
-			sprintf(http_headers, "GET /%s?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->path, purl->query, purl->host);
+			sprintf(http_headers, "GET /%s?%s HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->path, purl->query, purl->host);
 		}
 		else
 		{
-			sprintf(http_headers, "GET /%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->path, purl->host);
+			sprintf(http_headers, "GET /%s HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->path, purl->host);
 		}
 	}
 	else
 	{
 		if(purl->query != NULL)
 		{
-			sprintf(http_headers, "GET /?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->query, purl->host);
+			sprintf(http_headers, "GET /?%s HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->query, purl->host);
 		}
 		else
 		{
-			sprintf(http_headers, "GET / HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->host);
+			sprintf(http_headers, "GET / HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->host);
 		}
 	}
-
-	printf("1) HTTP headers:\n%s\n", http_headers);
 
 	/* Handle authorisation if needed */
 	if(purl->username != NULL)
@@ -347,9 +357,7 @@ struct http_response* http_get(char *url, char *custom_headers)
 /*		sprintf(http_headers, "%s\r\n", http_headers); */
 		strcat(http_headers, "\r\n");
 	}
-	printf("2) HTTP headers:\n%s\n", http_headers);
 	http_headers = (char*)realloc(http_headers, strlen(http_headers) + 1);
-	printf("3) HTTP headers:\n%s\n", http_headers);
 
 	/* Make request and return response */
 	hresp = http_req(http_headers, purl);
@@ -617,15 +625,97 @@ void http_response_free(struct http_response *hresp)
 	}
 }
 
+int content_size_from_headers(char *headers) {
+	char *hd,*line,*name,*token, *csize;
+	int idx;
+	hd = headers;
+	for(;;hd = NULL) {
+		token = strtok(hd, "\r\n");
+		if(NULL == token) {
+			break;
+		}
+		line = token;
+		idx = str_index_of(line, " ");
+		name = get_until(line, " ");
+		if(!stricmp(name, "content-length:")) {
+			free(name);
+			csize = get_until((char*)(&(line[idx+1])), "\r\n");
+			break;
+		}
+		free(name);
+	}
+	if(NULL != csize) {
+		int size = atoi(csize);
+		free(csize);
+		return size;
+	}
+	return 0;
+}
+
 int main (int argc, char **argv) {
-	struct http_response* resp;
+	struct http_response* response;
+
+	/*
+	char buffer[1024];
+	char *contents;
+	char *contents_save;
+	char *content_end;
+	size_t nread;
+	size_t content_size = 1024;
+	size_t total_size = 0;
+	struct http_response *response;
+	FILE *sample = fopen("mdv7_sample_txt", "r");
+
+	contents_save = contents = malloc(1);
+	printf("sample: %d, contents, %d\n", (uint32)sample, (uint32)contents );
+
+	if(NULL != sample && NULL != contents) {
+		content_end = contents;
+		while (!feof(sample)) {
+			contents = realloc(contents,(size_t)(content_end-contents+1024));
+			nread = fread(buffer, (size_t)1, 1024, sample);
+			content_end = memcpy(content_end, buffer, nread);
+			content_end += nread;
+		}
+		total_size = content_end - contents;
+		printf("Content size = %d\n", total_size);
+		contents = realloc(contents,(size_t)(total_size+1));
+		contents[total_size] = 0;
+		response = parse_response(contents);
+		if(NULL != response) {
+			int csize = content_size_from_headers(response->response_headers);
+			printf("Status code: %d\n", response->status_code_int);
+			printf("Status text: %s\n", response->status_text);
+			printf("Content length from headers: %d\n", csize);
+			printf("Response headers:\n%s\n", response->response_headers);
+			printf("Press enter for body...\n");
+			gets((char*)buffer);	
+			printf("Response body:\n===\n%s\n===\n", response->body);
+			free(response);
+		}
+		fclose(sample);
+		free(contents_save);
+	}
+	*/
 	initW5300();
 	printf("*** Socket test ***\n");
 
 	if(argc = 1) {
-		resp = http_get( argv[1], NULL );
-		printf( "Status code: %d\n", resp->status_code_int );
-		printf( "Body:\n%s\n", resp->body );
+		int csize = -1;
+		FILE *output;
+		response = http_get( argv[1], NULL );
+		printf("Headers:\n%s\n", response->response_headers);
+		csize = content_size_from_headers(response->response_headers);
+		printf( "Status code: %d\n", response->status_code_int );
+		printf( "Content size: %d\n", csize );
+		/* printf("\nBody:\n===\n%s\n===\n",response->body); */
+		output = fopen("wget_out", "w");
+		if (NULL != output && csize > 0) {
+			int written = fwrite(response->body, (size_t)1, (size_t)csize, output);
+			printf("Wrote %d bytes.\n", written);
+			fflush(output);
+		}
+		fclose(output);
 	} else {
 		printf("give URL as argument");
 	}

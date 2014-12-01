@@ -538,7 +538,7 @@ void     iinchip_irq(void)
    uint16 idx;
    IINCHIP_CRITICAL_SECTION_ENTER();
    /*M_01052008 : replaced '==' with '='. */
-   /*while(int_val == IINCHIP_READ(IR))  /* process all interrupt  */ */
+   /*while(int_val == IINCHIP_READ(IR))  /* process all interrupt  */
    while((int_val = IINCHIP_READ(IR)))  
    {          
       for(idx = 0 ; idx < MAX_SOCK_NUM ; idx++)
@@ -710,16 +710,25 @@ uint32   wiz_write_buf(SOCKET s,uint8* buf,uint32 len)
     return len;   
 }
 
-uint32   wiz_read_buf(SOCKET s, uint8* buf,uint32 len)
+uint32   wiz_read_buf(SOCKET s, void *buf, uint32 len)
 {
 
 #if (__DEF_IINCHIP_ADDRESS_MODE__ == __DEF_IINCHIP_DIRECT_MODE__)
    #if (__DEF_IINCHIP_BUF_OP__ == __DEF_C__)
       uint32 idx;
+      uint16 val;
+      uint32 end = 0;
       /* M_08082008 */
+      if (len & 1) {
+         end = (len >> 1) + 1;
+      } else {
+         end = len >> 1;
+      }
       IINCHIP_CRITICAL_SECTION_ENTER();
-      for (idx = 0; idx < len; idx+=2)
-         *((uint16*)(buf+idx)) = IINCHIP_READ(Sn_RX_FIFOR(s));
+      for (idx = 0; idx < end; idx++) {
+         val = IINCHIP_READ(Sn_RX_FIFOR(s));
+         ((unsigned short *)buf)[idx] = val;
+      }  
       /* M_08082008 */
       IINCHIP_CRITICAL_SECTION_EXIT();
    #elif (__DEF_IINCHIP_BUF_OP__ == __DEF_MCU_DEP_INLINE_ASM__)

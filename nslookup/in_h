@@ -51,9 +51,7 @@ struct sockaddr_in {
     struct in_addr sin_addr;   /* internet address */
 };
 
-int inet_pton(src, dst)
-        const char *src;
-        unsigned char *dst;
+int inet_pton(unsigned char addr_family, const char *src, unsigned char *dst)
 {
         static const char digits[] = "0123456789";
         int saw_digit, octets, ch;
