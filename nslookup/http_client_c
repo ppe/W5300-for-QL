@@ -698,7 +698,6 @@ int main (int argc, char **argv) {
 	}
 	*/
 	initW5300();
-	printf("*** Socket test ***\n");
 
 	if(argc = 1) {
 		int csize = -1;
