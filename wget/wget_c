@@ -1,131 +1,90 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include "http_client_h"
 #include "socket_h"
 #include "wget_h"
+#include "w5300_h"
 
-static int sock_peek (int fd, char *buf, int bufsize) {
-  int res;
-  do
-    res = recv (fd, buf, bufsize, MSG_PEEK);
-  while (res == -1 && errno == EINTR);
-  return res;
+void initW5300() {
+   uint8 tx_mem_conf[8] = {8,8,8,8,8,8,8,8};          /* for setting TMSR regsiter */
+   uint8 rx_mem_conf[8] = {8,8,8,8,8,8,8,8};          /* for setting RMSR regsiter */
+
+   uint8 ip[4] = {192,168,0,77};                   /* for setting SIP register */
+   uint8 gw[4] = {192,168,0,1};                     /* for setting GAR register */
+   uint8 sn[4] = {255,255,255,0};                     /* for setting SUBR register */
+   uint8 mac[6] = {0x02,0x42,0x00,0x00,0x00,77};      /* locally administered mac address */
+
+   /* initiate W5300 */
+/*
+   iinchip_init();
+*/
+   /* allocate internal TX/RX Memory of W5300 */
+   if(!sysinit(tx_mem_conf,rx_mem_conf))           
+   {
+      printf("MEMORY CONFIG ERR.\r\n");
+      exit(1);
+  }
+
+   /*setMR(getMR()|MR_FS);                            // If Little-endian, set MR_FS. */
+
+   setSHAR(mac);                                      /* set source hardware address */
+   /* configure network information */
+    setGAR(gw);                                     /* set gateway IP address */
+    setSUBR(sn);                                    /* set subnet mask address */
+    setSIPR(ip);                                    /* set source IP address */   
 }
 
-int fd_peek (int fd, char *buf, int bufsize, int timeout) {
-  return sock_peek (fd, buf, bufsize);
-}
 
-static int
-sock_read (int fd, char *buf, int bufsize)
-{
-  int res;
-  do
-    res = recv (fd, buf, bufsize, 0);
-  while (res == -1 && errno == EINTR);
-  return res;
-}
+int main (int argc, char **argv) {
+  struct http_response* response;
+  int received_len = 0;
+  int total_received = 0;
+  char BUF[1500];
 
-int fd_read (int fd, char *buf, int bufsize, int timeout) {
-  return sock_read (fd, buf, bufsize);
-}
+  initW5300();
 
+  if(argc = 1) {
+    int csize = 0;
+    int file_written = 0;
+    FILE *output;
+    response = http_get( argv[1], NULL );
+    /*
+    printf("Headers:\n%s\n", response->response_headers);
+    */
+    csize = content_size_from_headers(response->response_headers);
+    printf( "Status code: %d\n", response->status_code_int );
+    printf( "Content size: %d\n", csize );
 
-char * fd_read_hunk (int fd, hunk_terminator_t terminator, long sizehint, long maxsize) {
-  long bufsize = sizehint;
-  char *hunk = xmalloc (bufsize);
-  int tail = 0;                 /* tail position in HUNK */
-
-  assert (!maxsize || maxsize >= bufsize);
-
-  while (1)
-    {
-      const char *end;
-      int pklen, rdlen, remain;
-
-      /* First, peek at the available data. */
-
-      pklen = fd_peek (fd, hunk + tail, bufsize - 1 - tail, -1);
-      if (pklen < 0)
-        {
-          xfree (hunk);
-          return NULL;
-        }
-      end = terminator (hunk, hunk + tail, pklen);
-      if (end)
-        {
-          /* The data contains the terminator: we'll drain the data up
-             to the end of the terminator.  */
-          remain = end - (hunk + tail);
-          assert (remain >= 0);
-          if (remain == 0)
-            {
-              /* No more data needs to be read. */
-              hunk[tail] = '\0';
-              return hunk;
-            }
-          if (bufsize - 1 < tail + remain)
-            {
-              bufsize = tail + remain + 1;
-              hunk = xrealloc (hunk, bufsize);
-            }
-        }
-      else
-        /* No terminator: simply read the data we know is (or should
-           be) available.  */
-        remain = pklen;
-
-      /* Now, read the data.  Note that we make no assumptions about
-         how much data we'll get.  (Some TCP stacks are notorious for
-         read returning less data than the previous MSG_PEEK.)  */
-
-      rdlen = fd_read (fd, hunk + tail, remain, 0);
-      if (rdlen < 0)
-        {
-          xfree_null (hunk);
-          return NULL;
-        }
-      tail += rdlen;
-      hunk[tail] = '\0';
-
-      if (rdlen == 0)
-        {
-          if (tail == 0)
-            {
-              /* EOF without anything having been read */
-              xfree (hunk);
-              errno = 0;
-              return NULL;
-            }
-          else
-            /* EOF seen: return the data we've read. */
-            return hunk;
-        }
-      if (end && rdlen == remain)
-        /* The terminator was seen and the remaining data drained --
-           we got what we came for.  */
-        return hunk;
-
-      /* Keep looping until all the data arrives. */
-
-      if (tail == bufsize - 1)
-        {
-          /* Double the buffer size, but refuse to allocate more than
-             MAXSIZE bytes.  */
-          if (maxsize && bufsize >= maxsize)
-            {
-              xfree (hunk);
-              errno = ENOMEM;
-              return NULL;
-            }
-          bufsize <<= 1;
-          if (maxsize && bufsize > maxsize)
-            bufsize = maxsize;
-          hunk = xrealloc (hunk, bufsize);
-        }
+    output = fopen("wget_out", "w");
+    while(total_received < csize) {
+      received_len = recv(1, BUF, 1500, 0);
+      total_received += received_len;
+      file_written = fwrite(BUF, (size_t)1, (size_t)received_len, output);
+      if(file_written != received_len) {
+        printf("FATAL: Could not write %d bytes, only wrote %d bytes.\n", received_len, file_written);
+      }
+      printf("Rcv %d.\n", total_received);
     }
-}
+    fclose(output);
+    printf("Wrote %d bytes.\n", total_received);
+    close(1);
 
-int main(int argc, char **argv) {
-  exit(0);
+
+
+    /* printf("\nBody:\n===\n%s\n===\n",response->body); */
+    /*
+    output = fopen("wget_out", "w");
+    if (NULL != output && csize > 0) {
+      int written = fwrite(response->body, (size_t)1, (size_t)csize, output);
+      printf("Wrote %d bytes.\n", written);
+      fflush(output);
+    }
+    fclose(output);
+    */
+  } else {
+    printf("give URL as argument");
+  }
 }

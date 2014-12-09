@@ -1,12 +1,5 @@
 #ifndef __WGET_H__
 #define __WGET_H__
 
-#define xmalloc malloc
-#define xfree free
-#define xfree_null(p) if (!(p)) ; else xfree (p)
-#define xrealloc realloc
-
-typedef const char *(*hunk_terminator_t) (const char *, const char *, int);
-
 
 #endif

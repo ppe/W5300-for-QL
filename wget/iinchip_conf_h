@@ -10,7 +10,7 @@
  */
 
  
-#define __DEF_IINCHIP_DBG__      /**< Involves debug code */
+/*#define __DEF_IINCHIP_DBG__      /**< Involves debug code */
 /*#define __DEF_IINCHIP_INT__    /**< Involves ISR routine */
 /*#define __DEF_IINCHIP_PPP__    /**< Involves PPP service routines and md5.h & md5.c */
 

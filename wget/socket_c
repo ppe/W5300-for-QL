@@ -33,7 +33,7 @@
 /** 
  * Variable for temporary source port number 
  */
-uint16   iinchip_source_port;
+uint16   iinchip_source_port = 2042;
 
 /** 
  * The flag to check if first send or not.
@@ -257,18 +257,101 @@ void initialize_peek_cache( struct peek_cache_entry *cache, uint8 num_elements )
    }
 }
 
+void dump_cache_entry(struct peek_cache_entry *cache_entry) {
+   printf("PCE %d: buf %d, read_pos %d, bytes_available %d\n", cache_entry, cache_entry->buffer, cache_entry->read_position, cache_entry->bytes_available);
+}
+
+#define MAX_ETHERNET_PACKET_SIZE 1500
+static int recv_W5300 (int sock, void *buf, uint16 buf_len, unsigned int flags, struct peek_cache_entry *cache_entry) {
+   uint16 pack_size=0;
+   uint32 bytes_available = 0;
+   uint32 bytes_read = 0;
+
+   #ifdef __DEF_IINCHIP_DBG__
+      printf("%d : recv_W5300() flags 0x%x.\n",sock, flags);
+   #endif
+   while ((bytes_available = getSn_RX_RSR(sock)) == 0 && (getSn_SSR(sock) != SOCK_CLOSED) && (getSn_SSR(sock) != SOCK_CLOSE_WAIT));
+   bytes_available = getSn_RX_RSR(sock);
+
+   if ( bytes_available > 0 ) {
+      wiz_read_buf(sock,(uint8*)&pack_size,2);
+      #ifdef __DEF_IINCHIP_DBG__
+         printf("%d : recv_W5300() pack_size: %d, buf_len %d.\n",sock, pack_size, buf_len);
+      #endif
+      if(pack_size > buf_len) {
+         #ifdef __DEF_IINCHIP_DBG__
+            printf("%d : recv_W5300() pack_size > buf_len.\n",sock);
+         #endif
+         cache_entry->buffer = malloc(pack_size + 1);
+         if(cache_entry->buffer == NULL) {
+            printf("Could not allocate socket peek buffer of size %d\n.", pack_size);
+            exit(1);
+         }
+         bytes_read = wiz_read_buf(sock, cache_entry->buffer, (uint32)pack_size);
+         memcpy(buf, cache_entry->buffer, buf_len);
+         if(flags & MSG_PEEK) {
+            cache_entry->read_position = cache_entry->buffer;
+            cache_entry->bytes_available = pack_size;
+         } else {
+            cache_entry->read_position = ((unsigned char *)cache_entry->buffer)+buf_len;
+            cache_entry->bytes_available = pack_size-buf_len;
+         }
+         setSn_CR(sock,Sn_CR_RECV);
+         while(getSn_CR(sock) != 0); /* Wait for w5300 to ack cmd by clearing the CR */
+         #ifdef __DEF_IINCHIP_DBG__
+            dump_cache_entry(cache_entry);
+            printf("%d: return %d\n.", sock, buf_len);
+         #endif
+         return buf_len;
+      } else {
+         #ifdef __DEF_IINCHIP_DBG__
+            printf("%d : recv_W5300() pack_size < buf_len.\n",sock);
+         #endif
+         bytes_read = wiz_read_buf(sock, buf, (uint32)pack_size);
+         if(flags & MSG_PEEK) {
+            cache_entry->buffer = malloc(pack_size + 1);
+            if(cache_entry->buffer == NULL) {
+               printf("Could not allocate socket peek buffer of size %d\n.", pack_size);
+               exit(1);
+            }
+            memcpy(cache_entry->buffer,buf,pack_size);
+            cache_entry->bytes_available = pack_size;
+            cache_entry->read_position = cache_entry->buffer;
+         }
+         setSn_CR(sock,Sn_CR_RECV);
+         while(getSn_CR(sock) != 0); /* Wait for w5300 to ack cmd by clearing the CR */
+         #ifdef __DEF_IINCHIP_DBG__
+            dump_cache_entry(cache_entry);
+            printf("%d: return %d\n.", sock, bytes_read);
+         #endif
+         return bytes_read;
+      }
+      #ifdef __DEF_IINCHIP_DBG__
+         printf("%d : WARN: fall through!\n",sock);
+      #endif
+   } else {
+      #ifdef __DEF_IINCHIP_DBG__
+         printf("%d : recv() No bytes to read and socket closed.\n",sock);
+      #endif
+   }
+   return 0;
+}
+
 int recv (int sock, void *buf, uint16 buf_len, unsigned int flags) {
    static uint8 cache_initialized = 0;
    static struct peek_cache_entry peek_cache[8];
-   uint16 pack_size=0;
    uint32 bytes_read = 0;
    uint16 bytes_to_read = 0;
    uint32 bytes_available = 0;
    char input[100];
-   struct peek_cache_entry *cache_entry = &peek_cache[sock];
+   struct peek_cache_entry *cache_entry = &(peek_cache[sock]);
+
+   #ifdef __DEF_IINCHIP_DBG__
+      printf("%d : recv().\n",sock);
+   #endif
 
    if (!cache_initialized) {
-      initialize_peek_cache(&peek_cache[0], 8);
+      initialize_peek_cache(peek_cache, 8);
       cache_initialized = 1;
    }
 
@@ -277,120 +360,37 @@ int recv (int sock, void *buf, uint16 buf_len, unsigned int flags) {
          int num_bytes = min(cache_entry->bytes_available, buf_len);
          memcpy(buf, cache_entry->read_position, num_bytes);
          return num_bytes;
+      } else {
+         /* fetch the next packet from socket */
+         return recv_W5300(sock, buf, buf_len, flags, cache_entry);
       }
 
    }
 
-/*
-   if() {
-         cache_entry->read_position += num_bytes;
+   if(cache_entry->bytes_available) {
+         int num_bytes = min(cache_entry->bytes_available, buf_len);
+         #ifdef __DEF_IINCHIP_DBG__
+            printf("%d : %d bytes available in cache_entry, reading %d bytes.\n",sock, cache_entry->bytes_available, num_bytes);
+         #endif
+         memcpy(buf, cache_entry->read_position, num_bytes);
          cache_entry->bytes_available -= num_bytes;
          if( 0 == cache_entry->bytes_available) {
+            #ifdef __DEF_IINCHIP_DBG__
+               printf("%d : Clearing cache_entry.\n",sock);
+            #endif
             clear_cache_entry(cache_entry);
          }
-
+         cache_entry->read_position = ((unsigned char *)cache_entry->read_position) + num_bytes;
+         #ifdef __DEF_IINCHIP_DBG__
+            dump_cache_entry(cache_entry);
+            printf("%d: return %d from cache.\n.", sock, num_bytes);
+         #endif
+         return num_bytes;
    }
-*/
-
-   while ((bytes_available = getSn_RX_RSR(sock)) == 0 && (getSn_SSR(sock) != SOCK_CLOSED) && (getSn_SSR(sock) != SOCK_CLOSE_WAIT));
-   bytes_available = getSn_RX_RSR(sock);
-   bytes_to_read = min(bytes_available, buf_len);
-   if ( bytes_to_read > 0 ) {
-      /* TODO store the packet size somewhere... */
-      wiz_read_buf(sock,(uint8*)&pack_size,2);
-      #ifdef __DEF_IINCHIP_DBG__
-      /*
-         printf("%d : recv() pack_size: %d,available: %ld\n",sock, pack_size, bytes_available);
-         */
-      #endif
-      bytes_read = wiz_read_buf(sock, buf, (uint32)pack_size);
-      setSn_CR(sock,Sn_CR_RECV);
-      while(getSn_CR(sock) != 0); /* Wait for w5300 to ack cmd by clearing the CR */
-      if(flags & MSG_PEEK) {
-         cache_data(buf, bytes_read, &peek_cache[sock]);
-      }
-   } else {
-      #ifdef __DEF_IINCHIP_DBG__
-         printf("%d : recv() No bytes to read and socket closed.\n",sock);
-      #endif
-   }
-   return bytes_read;
-}
-
-uint32   recv_w5300(SOCKET s, uint8 * buf, uint32 len)
-{
-   uint16 pack_size=0;
-   uint32 rsize = 0;
-   
    #ifdef __DEF_IINCHIP_DBG__
-      printf("%d : recv()\r\n",s);
+      printf("%d : Use recv_W5300().\n",sock);
    #endif
-   
-   if(IINCHIP_READ(Sn_MR(s)) & Sn_MR_ALIGN) 
-   {
-      wiz_read_buf(s, buf, (uint32)len);
-      setSn_CR(s,Sn_CR_RECV);
-      return len;
-   }
-   rsize=getSn_RX_RSR(s);
-   /*
-      #ifdef __DEF_IINCHIP_DBG__   
-         printf("%d:rsize=%d\n",s,rsize);
-      #endif
-      */
-   if(rsize > 0)    {
-
-      wiz_read_buf(s,(uint8*)&pack_size,2);        /* extract the PACKET-INFO(DATA packet length) */
-      if( (*(vint16*)MR) & MR_FS )
-         pack_size = ((((pack_size << 8 ) & 0xFF00)) | ((pack_size >> 8)& 0x00FF));
-      /*
-      #ifdef __DEF_IINCHIP_DBG__   
-         printf("%d:pack_size=%d\n",s,pack_size);
-      #endif
-      */
-
-      wiz_read_buf(s, buf, (uint32)pack_size);     /* copy data    */
-      
-      setSn_CR(s,Sn_CR_RECV);                      /* recv */
-      
-      /*
-      * \warning  send a packet for updating window size. This code block must be only used when W5300 do only receiving data.
-      */
-      /* ------------------------ */
-      /* WARNING CODE BLOCK START  */
-      
-      /* M_15052008 : Replace Sn_CR_SEND with Sn_CR_SEND_KEEP. */
-      /*if(!(getSn_IR(s) & Sn_IR_SENDOK)) */
-      /*{ */
-      /*   setSn_TX_WRSR(s,0);                    /* size = 0 */
-      /*   setSn_CR(s,Sn_CR_SEND);                // send */
-      /*   while(!(getSn_IR(s) & Sn_IR_SENDOK));  // wait SEND command completion */
-      /*   setSn_IR(s,Sn_IR_SENDOK);              // clear Sn_IR_SENDOK bit */
-      /*} */
-      
-      /* M_04072008 : Replace Sn_CR_SEND_KEP with Sn_CR_SEND. */
-      /*if(getSn_RX_RSR(s) == 0)                     // send the window-update packet when the window size is full */
-      /*{ */
-      /*   uint8 keep_time = 0; */
-      /*   if((keep_time=getSn_KPALVTR(s)) != 0x00) setSn_KPALVTR(s,0x00); // disables the auto-keep-alive-process */
-      /*   setSn_CR(s,Sn_CR_SEND_KEEP);              // send a keep-alive packet by command */
-      /*   setSn_KPALVTR(s,keep_time);               // restore the previous keep-alive-timer value */
-      /*} */
-      #if 0
-      if(getSn_RX_RSR(s) == 0)                     /* check if the window size is full or not */
-      { /* Sn_RX_RSR can be compared with another value instead of ¡®0¡¯,
-         according to the host performance of receiving data */
-         setSn_TX_WRSR(s,1);                       /* size : 1 byte dummy size */
-         IINCHIP_WRITE(Sn_TX_FIFOR(s),0x0000);     /* write dummy data into tx memory */
-         setSn_CR(s,Sn_CR_SEND);                   /* send                          */
-         while(!(getSn_IR(s) & Sn_IR_SENDOK));     /* wait SEND command completion  */
-         setSn_IR(s,Sn_IR_SENDOK);                 /* clear Sn_IR_SENDOK bit        */
-      }    
-      #endif                                                                        
-      /* WARNING CODE BLOCK END */
-      /* ---------------------- */
-   }
-   return (uint32)pack_size;
+   return recv_W5300(sock, buf, buf_len, flags, cache_entry);
 }
 
 uint32   sendto(SOCKET s, uint8 * buf, uint32 len, uint8 * addr, uint16 port)

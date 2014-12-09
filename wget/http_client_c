@@ -1,0 +1,796 @@
+/*
+	http-client-c
+	Copyright (C) 2012-2013  Swen Kooij
+
+	This file is part of http-client-c.
+
+    http-client-c is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    http-client-c is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with http-client-c. If not, see <http://www.gnu.org/licenses/>.
+
+	Warning:
+	This library does not tend to work that stable nor does it fully implent the
+	standards described by IETF. For more information on the precise implentation of the
+	Hyper Text Transfer Protocol:
+
+	http://www.ietf.org/rfc/rfc2616.txt
+*/
+
+#pragma GCC diagnostic ignored "-Wwrite-strings"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <errno.h>
+#include <assert.h>
+
+#include "in_h"
+#include "socket_h"
+#include "resolv_h"
+#include "stringx_h"
+#include "urlparser_h"
+#include "http_client_h"
+
+
+static int sock_peek (int fd, char *buf, int bufsize) {
+  int res;
+  do
+    res = recv (fd, buf, bufsize, MSG_PEEK);
+  while (res == -1 && errno == EINTR);
+  return res;
+}
+
+int fd_peek (int fd, char *buf, int bufsize, int timeout) {
+  return sock_peek (fd, buf, bufsize);
+}
+
+static int
+sock_read (int fd, char *buf, int bufsize)
+{
+  int res;
+  do
+    res = recv (fd, buf, bufsize, 0);
+  while (res == -1 && errno == EINTR);
+  return res;
+}
+
+int fd_read (int fd, char *buf, int bufsize, int timeout) {
+  return sock_read (fd, buf, bufsize);
+}
+
+/* Determine whether [START, PEEKED + PEEKLEN) contains an empty line.
+   If so, return the pointer to the position after the line, otherwise
+   return NULL.  This is used as callback to fd_read_hunk.  The data
+   between START and PEEKED has been read and cannot be "unread"; the
+   data after PEEKED has only been peeked.  */
+
+static const char * response_head_terminator (const char *start, const char *peeked, int peeklen) {
+  const char *p, *end;
+
+  /* If at first peek, verify whether HUNK starts with "HTTP".  If
+     not, this is a HTTP/0.9 request and we must bail out without
+     reading anything.  */
+  if (start == peeked && 0 != memcmp (start, "HTTP", min (peeklen, 4)))
+    return start;
+
+  /* Look for "\n[\r]\n", and return the following position if found.
+     Start two chars before the current to cover the possibility that
+     part of the terminator (e.g. "\n\r") arrived in the previous
+     batch.  */
+  p = peeked - start < 2 ? start : peeked - 2;
+  end = peeked + peeklen;
+
+  /* Check for \n\r\n or \n\n anywhere in [p, end-2). */
+  for (; p < end - 2; p++)
+    if (*p == '\n')
+      {
+        if (p[1] == '\r' && p[2] == '\n')
+          return p + 3;
+        else if (p[1] == '\n')
+          return p + 2;
+      }
+  /* p==end-2: check for \n\n directly preceding END. */
+  if (p[0] == '\n' && p[1] == '\n')
+    return p + 2;
+
+  return NULL;
+}
+
+
+char * fd_read_hunk (int fd, hunk_terminator_t terminator, long sizehint, long maxsize) {
+  long bufsize = sizehint;
+  char *hunk = xmalloc (bufsize);
+  int tail = 0;                 /* tail position in HUNK */
+
+  assert (!maxsize || maxsize >= bufsize);
+
+  while (1)
+    {
+      const char *end;
+      int pklen, rdlen, remain;
+
+      /* First, peek at the available data. */
+
+      pklen = fd_peek (fd, hunk + tail, bufsize - 1 - tail, -1);
+      if (pklen < 0)
+        {
+          xfree (hunk);
+          return NULL;
+        }
+      end = terminator (hunk, hunk + tail, pklen);
+      if (end)
+        {
+          /* The data contains the terminator: we'll drain the data up
+             to the end of the terminator.  */
+          remain = end - (hunk + tail);
+          assert (remain >= 0);
+          if (remain == 0)
+            {
+              /* No more data needs to be read. */
+              hunk[tail] = '\0';
+              return hunk;
+            }
+          if (bufsize - 1 < tail + remain)
+            {
+              bufsize = tail + remain + 1;
+              hunk = xrealloc (hunk, bufsize);
+            }
+        }
+      else
+        /* No terminator: simply read the data we know is (or should
+           be) available.  */
+        remain = pklen;
+
+      /* Now, read the data.  Note that we make no assumptions about
+         how much data we'll get.  (Some TCP stacks are notorious for
+         read returning less data than the previous MSG_PEEK.)  */
+
+      rdlen = fd_read (fd, hunk + tail, remain, 0);
+      if (rdlen < 0)
+        {
+          xfree_null (hunk);
+          return NULL;
+        }
+      tail += rdlen;
+      hunk[tail] = '\0';
+
+      if (rdlen == 0)
+        {
+          if (tail == 0)
+            {
+              /* EOF without anything having been read */
+              xfree (hunk);
+              errno = 0;
+              return NULL;
+            }
+          else
+            /* EOF seen: return the data we've read. */
+            return hunk;
+        }
+      if (end && rdlen == remain)
+        /* The terminator was seen and the remaining data drained --
+           we got what we came for.  */
+        return hunk;
+
+      /* Keep looping until all the data arrives. */
+
+      if (tail == bufsize - 1)
+        {
+          /* Double the buffer size, but refuse to allocate more than
+             MAXSIZE bytes.  */
+          if (maxsize && bufsize >= maxsize)
+            {
+              xfree (hunk);
+              errno = ENOMEM;
+              return NULL;
+            }
+          bufsize <<= 1;
+          if (maxsize && bufsize > maxsize)
+            bufsize = maxsize;
+          hunk = xrealloc (hunk, bufsize);
+        }
+    }
+}
+
+/* Read the HTTP request head from FD and return it.  The error
+   conditions are the same as with fd_read_hunk.
+
+   To support HTTP/0.9 responses, this function tries to make sure
+   that the data begins with "HTTP".  If this is not the case, no data
+   is read and an empty request is returned, so that the remaining
+   data can be treated as body.  */
+#define HTTP_RESPONSE_MAX_SIZE 16384
+static char * read_http_response_head (int fd) {
+  return fd_read_hunk (fd, response_head_terminator, 512,
+                       HTTP_RESPONSE_MAX_SIZE);
+}
+
+struct http_response * parse_response(char *response) {
+	
+	char *status_line;
+	char *status_code;
+	struct http_response *hresp;
+	char *headers;
+	char *token;
+	char *original_status_line;
+
+	hresp = (struct http_response*)malloc(sizeof(struct http_response));
+	if(hresp == NULL)
+	{
+		printf("Unable to allocate memory for htmlcontent.");
+		return NULL;
+	}
+	hresp->body = NULL;
+	hresp->request_headers = NULL;
+	hresp->response_headers = response;
+	hresp->status_code = NULL;
+	hresp->status_text = NULL;
+
+	status_line = get_until(response, "\r\n");
+	original_status_line = status_line;
+	token = strtok(status_line," "); /* HTTP/1.? */
+	token = strtok(NULL," "); /* status code */
+	status_code = strdup(token);
+	token = strtok(NULL," "); /* status text */
+	hresp->status_code = status_code;
+	hresp->status_code_int = atoi(status_code);
+	hresp->status_text = strdup(token);
+	free(original_status_line);
+
+	return hresp;
+}
+
+/*
+	Handles redirect if needed for get requests
+*/
+struct http_response* handle_redirect_get(struct http_response* hresp, char* custom_headers)
+{
+	if(hresp->status_code_int > 300 && hresp->status_code_int < 399)
+	{
+		char *token = strtok(hresp->response_headers, "\r\n");
+		while(token != NULL)
+		{
+			if(str_contains(token, "Location:"))
+			{
+				/* Extract url */
+				char *location = str_replace("Location: ", "", token);
+				return http_get(location, custom_headers);
+			}
+			token = strtok(NULL, "\r\n");
+		}
+	}
+	else
+	{
+		/* We're not dealing with a redirect, just return the same structure */
+		return hresp;
+	}
+}
+
+/*
+	Handles redirect if needed for head requests
+*/
+struct http_response* handle_redirect_head(struct http_response* hresp, char* custom_headers)
+{
+	if(hresp->status_code_int > 300 && hresp->status_code_int < 399)
+	{
+		char *token = strtok(hresp->response_headers, "\r\n");
+		while(token != NULL)
+		{
+			if(str_contains(token, "Location:"))
+			{
+				/* Extract url */
+				char *location = str_replace("Location: ", "", token);
+				return http_head(location, custom_headers);
+			}
+			token = strtok(NULL, "\r\n");
+		}
+	}
+	else
+	{
+		/* We're not dealing with a redirect, just return the same structure */
+		return hresp;
+	}
+}
+
+/*
+	Handles redirect if needed for post requests
+*/
+struct http_response* handle_redirect_post(struct http_response* hresp, char* custom_headers, char *post_data)
+{
+	if(hresp->status_code_int > 300 && hresp->status_code_int < 399)
+	{
+		char *token = strtok(hresp->response_headers, "\r\n");
+		while(token != NULL)
+		{
+			if(str_contains(token, "Location:"))
+			{
+				/* Extract url */
+				char *location = str_replace("Location: ", "", token);
+				return http_post(location, custom_headers, post_data);
+			}
+			token = strtok(NULL, "\r\n");
+		}
+	}
+	else
+	{
+		/* We're not dealing with a redirect, just return the same structure */
+		return hresp;
+	}
+}
+
+/*
+	Makes a HTTP request and returns the response
+*/
+struct http_response* http_req(char *http_headers, struct parsed_url *purl)
+{
+	int sock;
+	int tmpres;
+	int numrecvs=0;
+	struct http_response *hresp;
+	struct sockaddr_in *remote;
+	int sent = 0;
+	char *status_line;
+	char *status_code;
+	char *status_text;
+	char *headers;
+	char *body;
+	char *response;
+	unsigned char *BUF = malloc(2049);
+	size_t received_len = 0;
+	size_t response_len = 0;
+	char input[100];
+
+	/* Parse url */
+	if(purl == NULL)
+	{
+		printf("Unable to parse url");
+	    free(BUF);
+		return NULL;
+	}
+
+	/* Create TCP socket */
+	if((sock = socket(1, Sn_MR_TCP, 0 /* src port */, 0 /* flags */)) < 0)
+	{
+	    printf("Can't create TCP socket");
+	    free(BUF);
+		return NULL;
+	}
+	/* Set remote->sin_addr.s_addr */
+	remote = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in *));
+	remote->sin_family = AF_INET;
+	/* Connect */
+	if(connect(1, (uint8 *)(&(purl->ip)), atoi(purl->port)) <= 0)
+	{
+	    printf("Could not connect");
+	    free(BUF);
+		return NULL;
+	}
+	/* Send headers to server */
+	while(sent < strlen(http_headers))
+	{
+	    tmpres = send(1, ((uint8 *)http_headers)+sent, strlen(http_headers)-sent);
+		if(tmpres == -1)
+		{
+			printf("Can't send headers");
+		    free(BUF);
+			return NULL;
+		}
+		sent += tmpres;
+	 }
+
+	response = read_http_response_head(sock);
+
+	/*
+	while((received_len = recv(1, BUF, 2048, 0)) > 0)
+	{
+		numrecvs++;
+        BUF[received_len] = '\0';
+		response = (char*)realloc(response, response_len + received_len + 1);
+		memcpy(response+response_len, BUF, received_len);
+		response_len += received_len;
+	}
+	if (received_len < 0)
+    {
+		free(http_headers);
+		#ifdef _WIN32
+			closesocket(sock);
+		#else
+			close(1);
+		#endif
+        printf("Unable to receive");
+		return NULL;
+    }
+	response = (char*)realloc(response, response_len + 1);
+	response[response_len] = '\0';
+	printf("Received a total of %d bytes with %d recv()s.\n", response_len,numrecvs);
+	#ifdef _WIN32
+		closesocket(sock);
+	#else
+		close(1);
+	#endif
+	*/
+	hresp = parse_response(response);
+	hresp->request_headers = http_headers;
+	hresp->request_uri = purl;
+    free(BUF);
+	return hresp;
+}
+
+/*
+	Makes a HTTP GET request to the given url
+*/
+struct http_response* http_get(char *url, char *custom_headers)
+{
+	struct http_response *hresp;
+	/* Parse url */
+	struct parsed_url *purl = parse_url(url);
+	char *http_headers = (char*)malloc(1024);
+	printf("Parse URL '%s'.\n",url);
+	if(purl == NULL)
+	{
+		printf("Unable to parse URL '%s'.\n", url);
+		return NULL;
+	}
+
+	printf("URL->host '%s', port %s, scheme %s, path '%s'.\n",purl->host, purl->port, purl->scheme, purl->path);
+
+	/* Build query/headers */
+	if(purl->path != NULL)
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "GET /%s?%s HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->path, purl->query, purl->host);
+		}
+		else
+		{
+			sprintf(http_headers, "GET /%s HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->path, purl->host);
+		}
+	}
+	else
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "GET /?%s HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->query, purl->host);
+		}
+		else
+		{
+			sprintf(http_headers, "GET / HTTP/1.1\r\nHost:%s\r\nConnection: close\r\n", purl->host);
+		}
+	}
+
+	/* Handle authorisation if needed */
+	if(purl->username != NULL)
+	{
+		char *base64;
+		char *auth_header;
+		/* Format username:password pair */
+		char *upwd = (char*)malloc(1024);
+		sprintf(upwd, "%s:%s", purl->username, purl->password);
+		upwd = (char*)realloc(upwd, strlen(upwd) + 1);
+
+		/* Base64 encode */
+		base64 = base64_encode(upwd);
+
+		/* Form header */
+		auth_header = (char*)malloc(1024);
+		sprintf(auth_header, "Authorization: Basic %s\r\n", base64);
+		auth_header = (char*)realloc(auth_header, strlen(auth_header) + 1);
+
+		/* Add to header */
+		http_headers = (char*)realloc(http_headers, strlen(http_headers) + strlen(auth_header) + 2);
+		sprintf(http_headers, "%s%s", http_headers, auth_header);
+	}
+
+	/* Add custom headers, and close */
+	if(custom_headers != NULL)
+	{
+		sprintf(http_headers, "%s%s\r\n", http_headers, custom_headers);
+	}
+	else
+	{
+/*		sprintf(http_headers, "%s\r\n", http_headers); */
+		strcat(http_headers, "\r\n");
+	}
+	http_headers = (char*)realloc(http_headers, strlen(http_headers) + 1);
+
+	/* Make request and return response */
+	hresp = http_req(http_headers, purl);
+
+	/* Handle redirect */
+	return handle_redirect_get(hresp, custom_headers);
+}
+
+/*
+	Makes a HTTP POST request to the given url
+*/
+struct http_response* http_post(char *url, char *custom_headers, char *post_data)
+{
+	char *http_headers;
+	struct http_response *hresp;
+	/* Parse url */
+	struct parsed_url *purl = parse_url(url);
+	if(purl == NULL)
+	{
+		printf("Unable to parse url");
+		return NULL;
+	}
+
+	/* Declare variable */
+	http_headers = (char*)malloc(1024);
+
+	/* Build query/headers */
+	if(purl->path != NULL)
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "POST /%s?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\nContent-Length:%zu\r\nContent-Type:application/x-www-form-urlencoded\r\n", purl->path, purl->query, purl->host, strlen(post_data));
+		}
+		else
+		{
+			sprintf(http_headers, "POST /%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\nContent-Length:%zu\r\nContent-Type:application/x-www-form-urlencoded\r\n", purl->path, purl->host, strlen(post_data));
+		}
+	}
+	else
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "POST /?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\nContent-Length:%zu\r\nContent-Type:application/x-www-form-urlencoded\r\n", purl->query, purl->host, strlen(post_data));
+		}
+		else
+		{
+			sprintf(http_headers, "POST / HTTP/1.1\r\nHost:%s\r\nConnection:close\r\nContent-Length:%zu\r\nContent-Type:application/x-www-form-urlencoded\r\n", purl->host, strlen(post_data));
+		}
+	}
+
+	/* Handle authorisation if needed */
+	if(purl->username != NULL)
+	{
+		char *base64;
+		char *auth_header;
+		/* Format username:password pair */
+		char *upwd = (char*)malloc(1024);
+		sprintf(upwd, "%s:%s", purl->username, purl->password);
+		upwd = (char*)realloc(upwd, strlen(upwd) + 1);
+
+		/* Base64 encode */
+		base64 = base64_encode(upwd);
+
+		/* Form header */
+		auth_header = (char*)malloc(1024);
+		sprintf(auth_header, "Authorization: Basic %s\r\n", base64);
+		auth_header = (char*)realloc(auth_header, strlen(auth_header) + 1);
+
+		/* Add to header */
+		http_headers = (char*)realloc(http_headers, strlen(http_headers) + strlen(auth_header) + 2);
+		sprintf(http_headers, "%s%s", http_headers, auth_header);
+	}
+
+	if(custom_headers != NULL)
+	{
+		sprintf(http_headers, "%s%s\r\n", http_headers, custom_headers);
+		sprintf(http_headers, "%s\r\n%s", http_headers, post_data);
+	}
+	else
+	{
+		sprintf(http_headers, "%s\r\n%s", http_headers, post_data);
+	}
+	http_headers = (char*)realloc(http_headers, strlen(http_headers) + 1);
+
+	/* Make request and return response */
+	hresp = http_req(http_headers, purl);
+
+	/* Handle redirect */
+	return handle_redirect_post(hresp, custom_headers, post_data);
+}
+
+/*
+	Makes a HTTP HEAD request to the given url
+*/
+struct http_response* http_head(char *url, char *custom_headers)
+{
+	char *http_headers;
+	struct http_response *hresp;
+	/* Parse url */
+	struct parsed_url *purl = parse_url(url);
+	if(purl == NULL)
+	{
+		printf("Unable to parse url");
+		return NULL;
+	}
+
+	/* Declare variable */
+	http_headers = (char*)malloc(1024);
+
+	/* Build query/headers */
+	if(purl->path != NULL)
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "HEAD /%s?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->path, purl->query, purl->host);
+		}
+		else
+		{
+			sprintf(http_headers, "HEAD /%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->path, purl->host);
+		}
+	}
+	else
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "HEAD/?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->query, purl->host);
+		}
+		else
+		{
+			sprintf(http_headers, "HEAD / HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->host);
+		}
+	}
+
+	/* Handle authorisation if needed */
+	if(purl->username != NULL)
+	{
+		char *base64;
+		char *auth_header;
+		/* Format username:password pair */
+		char *upwd = (char*)malloc(1024);
+		sprintf(upwd, "%s:%s", purl->username, purl->password);
+		upwd = (char*)realloc(upwd, strlen(upwd) + 1);
+
+		/* Base64 encode */
+		base64 = base64_encode(upwd);
+
+		/* Form header */
+		auth_header = (char*)malloc(1024);
+		sprintf(auth_header, "Authorization: Basic %s\r\n", base64);
+		auth_header = (char*)realloc(auth_header, strlen(auth_header) + 1);
+
+		/* Add to header */
+		http_headers = (char*)realloc(http_headers, strlen(http_headers) + strlen(auth_header) + 2);
+		sprintf(http_headers, "%s%s", http_headers, auth_header);
+	}
+
+	if(custom_headers != NULL)
+	{
+		sprintf(http_headers, "%s%s\r\n", http_headers, custom_headers);
+	}
+	else
+	{
+		sprintf(http_headers, "%s\r\n", http_headers);
+	}
+	http_headers = (char*)realloc(http_headers, strlen(http_headers) + 1);
+
+	/* Make request and return response */
+	hresp = http_req(http_headers, purl);
+
+	/* Handle redirect */
+	return handle_redirect_head(hresp, custom_headers);
+}
+
+/*
+	Do HTTP OPTIONs requests
+*/
+struct http_response* http_options(char *url)
+{
+	char *http_headers;
+	struct http_response *hresp;
+	/* Parse url */
+	struct parsed_url *purl = parse_url(url);
+	if(purl == NULL)
+	{
+		printf("Unable to parse url");
+		return NULL;
+	}
+
+	/* Declare variable */
+	http_headers = (char*)malloc(1024);
+
+	/* Build query/headers */
+	if(purl->path != NULL)
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "OPTIONS /%s?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->path, purl->query, purl->host);
+		}
+		else
+		{
+			sprintf(http_headers, "OPTIONS /%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->path, purl->host);
+		}
+	}
+	else
+	{
+		if(purl->query != NULL)
+		{
+			sprintf(http_headers, "OPTIONS/?%s HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->query, purl->host);
+		}
+		else
+		{
+			sprintf(http_headers, "OPTIONS / HTTP/1.1\r\nHost:%s\r\nConnection:close\r\n", purl->host);
+		}
+	}
+
+	/* Handle authorisation if needed */
+	if(purl->username != NULL)
+	{
+		char *upwd;
+		char *base64;
+		char *auth_header;
+		/* Format username:password pair */
+		upwd = (char*)malloc(1024);
+		sprintf(upwd, "%s:%s", purl->username, purl->password);
+		upwd = (char*)realloc(upwd, strlen(upwd) + 1);
+
+		/* Base64 encode */
+		base64 = base64_encode(upwd);
+
+		/* Form header */
+		auth_header = (char*)malloc(1024);
+		sprintf(auth_header, "Authorization: Basic %s\r\n", base64);
+		auth_header = (char*)realloc(auth_header, strlen(auth_header) + 1);
+
+		/* Add to header */
+		http_headers = (char*)realloc(http_headers, strlen(http_headers) + strlen(auth_header) + 2);
+		sprintf(http_headers, "%s%s", http_headers, auth_header);
+	}
+
+	/* Build headers */
+	sprintf(http_headers, "%s\r\n", http_headers);
+	http_headers = (char*)realloc(http_headers, strlen(http_headers) + 1);
+
+	/* Make request and return response */
+	hresp = http_req(http_headers, purl);
+
+	/* Handle redirect */
+	return hresp;
+}
+
+/*
+	Free memory of http_response
+*/
+void http_response_free(struct http_response *hresp)
+{
+	if(hresp != NULL)
+	{
+		if(hresp->request_uri != NULL) parsed_url_free(hresp->request_uri);
+		if(hresp->body != NULL) free(hresp->body);
+		if(hresp->status_code != NULL) free(hresp->status_code);
+		if(hresp->status_text != NULL) free(hresp->status_text);
+		if(hresp->request_headers != NULL) free(hresp->request_headers);
+		if(hresp->response_headers != NULL) free(hresp->response_headers);
+		free(hresp);
+	}
+}
+
+int content_size_from_headers(char *headers) {
+	char *hd,*line,*name,*token, *csize;
+	int idx;
+	hd = headers;
+	for(;;hd = NULL) {
+		token = strtok(hd, "\r\n");
+		if(NULL == token) {
+			break;
+		}
+		line = token;
+		idx = str_index_of(line, " ");
+		name = get_until(line, " ");
+		if(!stricmp(name, "content-length:")) {
+			free(name);
+			csize = get_until((char*)(&(line[idx+1])), "\r\n");
+			break;
+		}
+		free(name);
+	}
+	if(NULL != csize) {
+		int size = atoi(csize);
+		free(csize);
+		return size;
+	}
+	return 0;
+}
