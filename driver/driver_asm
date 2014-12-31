@@ -1,3 +1,87 @@
+         in       dev1_driver_in
+; Get QDOS info to get sysvars address in a0
+         moveq    #0,d0
+         trap     #1
+; >>> Allocate storage for driver from common heap <<<
+; Sysvars address passed in A6, save old A6
+         move.l   a6,-(a7)
+         movea.l  a0,a6
+         move.l   #HEAP_SIZE,d1     ; Number of bytes required
+; MM_ALCHP has to be called in supervisor mode
+         trap     #0                ; Enter supervisor mode
+         movea.w  MM_ALCHP,a4
+         jsr      (a4)
+; Return to user mode (== clear bit 13 of status register)
+         andi     #$DFFF,sr
+         bne      oom_exit
+; On successful return from MM_ALCHP, A0 points to start of allocated area
+; First 4 bytes of the allocated area contains the size of the heap fragment and should be preserved
+; Set up the driver linkage (standard version) block
+         movea.l  (a7)+,a6
+         lea      4(a0),a1
+         adda.l   #$1C,a1
+         lea      channel_IO,a2
+         move.l   a2,(a1)+
+         lea      open_channel,a2
+         move.l   a2,(a1)+
+         lea      close_channel,a2
+         move.l   a2,(a1)
+         adda.l   #$1C,a0             ; Point to $18 past the start of linkage block
+         moveq    #mt_liod,d0        ; link in this driver
+         trap     #1
+         tst.b    d0
+         bne      direct_exit
+; Set up SuperBasic keywords
+         lea      KEYWORDS,a1
+         move.w   BP_INIT,a4     ; Vector to link in new procedures and functions
+         jsr      (a4)
+         rts
+; Remove driver from chain
+         lea      lnkblk+$18,a0
+         moveq    #mt_riod,d0        ; remove this driver
+         trap     #1
+;
+release_heap
+; Release the just allocated heap space (Needs to be done in supervisor mode)
+         trap     #0                ; Enter supervisor mode
+         movea.w  MM_RECHP,a4
+         jsr      (a4)         
+; Return to user mode (== clear bit 13 of status register)
+         andi     #$DFFF,sr
+oom_exit
+         movea.l  (a7)+,a6
+direct_exit
+         rts
+;
+QE_UNLOAD
+         move.b   #IO_SSTRG,d0    ; Write unload notification message on channel #0
+         move.l   #24,d2           ; Length of message
+         moveq    #0,d3           ; Timeout == 0
+         movea.l  #0,a0           ; channel id of channel 0
+         lea      msg_unload,a1
+         trap     #3
+         moveq    #0,d0
+         rts
+msg_unload
+         dc.b    'Unloading W5300 driver.',10
+;
+open_channel
+         movea.l  a0,a2
+         move.w   (a2)+,d1
+         cmpi.w   #4,d1
+         bcs      notme   
+         move.l   (a2)+,d2
+         and.l    #$dfdfdfff,d2     ; Uppercase the first three characters
+         cmpi.l   #'SCK_',d2
+         bne      notme
+         moveq    #0,d0             ;
+         rts
+close_channel
+         nop
+channel_IO
+         moveq    #0,d0
+         rts
+
 ; Set up the serio pointers area
          lea      ptrs,a0
          lea      io_ready,a2
@@ -30,7 +114,7 @@ udpname  dc.w     'UDP'
 ; Insert W5300 code
 ;         in       mdv3_w5300_asm
 ; Insert driver name parser
-         in       mdv3_parser_asm
+         in       dev1_parser_asm
 pop_notme
          adda.w   #6,a7             ; Ditch saved string length (word) and pointer to start of string (long word)   
 notme
@@ -106,3 +190,9 @@ send
          movea.l   $22(a0),a1
          move.b    d1,(a1)
          bra       fetch_1
+KEYWORDS dc.w     1             ; No of procedures we are linking in
+         dc.w     QE_UNLOAD-*   ; Pointer to code of first procedure
+         dc.b     9,'QE_UNLOAD' ; Name of first procedure
+         dc.w     0             ; End marker for procedures
+         dc.w     0             ; No of functions we are linking in
+         dc.w     0             ; End marker for functions

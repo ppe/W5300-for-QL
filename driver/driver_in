@@ -1,0 +1,1 @@
+HEAP_SIZE   equ     $100
