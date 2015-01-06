@@ -60,10 +60,29 @@ QE_UNLOAD
          movea.l  #0,a0           ; channel id of channel 0
          lea      msg_unload,a1
          trap     #3
+; Open a SCK_ channel so that we can get a reference to the address of the driver linkage block
+; by calling a TRAP #3 IO-routine
+         moveq    #IO_OPEN,d0
+         moveq    #-1,d1         ; Current job owns the channel
+         moveq    #0,d3          ; Regular open
+         lea      chan_name_sck,a0
+         trap     #2
+         bne      unload_exit
+; Channel id is now in A0, correct for trap #3 calls
+; Trap #3 with d0==UNLOAD==$7E
+         moveq    #$7E,d0
+         moveq    #-1,d3         ; Timeout
+         trap     #3
+         moveq    #IO_CLOSE,d0
+         trap     #2
          moveq    #0,d0
+unload_exit
          rts
 msg_unload
          dc.b    'Unloading W5300 driver.',10
+chan_name_sck
+         dc.w     4
+         dc.b    'SCK_'
 ;
 open_channel
          movea.l  a0,a2
@@ -74,10 +93,25 @@ open_channel
          and.l    #$dfdfdfff,d2     ; Uppercase the first three characters
          cmpi.l   #'SCK_',d2
          bne      notme
-         moveq    #0,d0             ;
+; reserve space for the channel definition block
+; save A0 in case memory allocation fails
+         move.l   a0,-(a7)
+         move.l   #$40,d1
+; A6 already points to sysvars when handling a trap #3
+; Also, we are already in supervisor mode, which is a prerequisite for MM_ALCHP
+         movea.w  MM_ALCHP,a4
+         jsr      (a4)
+         bne      open_channel_fail
+         adda.l   #4,a7             ; purge saved a0 from stack
+; a0 contains pointer to allocated channel definition block with $0(a0).w containing length of definition block
+         rts
+open_channel_fail
+         movea.l  (a7)+,a0
          rts
 close_channel
-         nop
+         movea.w  MM_RECHP,a4
+         jsr      (a4)
+         rts
 channel_IO
          moveq    #0,d0
          rts
