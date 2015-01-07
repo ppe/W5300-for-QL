@@ -1,1 +1,2 @@
-HEAP_SIZE   equ     $100
+HEAP_SIZE        equ     $100
+QE_IO_DRV_INFO   equ     $7E
