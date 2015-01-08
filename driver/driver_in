@@ -1,2 +1,3 @@
+BV_RIP           equ     $58        ; Offset to maths stack address store in basic variables
 HEAP_SIZE        equ     $100
 QE_IO_DRV_INFO   equ     $7E

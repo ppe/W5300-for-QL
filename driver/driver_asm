@@ -26,7 +26,7 @@
          move.l   a2,(a1)+
          lea      close_channel,a2
          move.l   a2,(a1)
-         adda.l   #$1C,a0             ; Point to $18 past the start of linkage block
+         adda.l   #$1C,a0             ; Point to $18 (==link to next driver) past the start of linkage block
          moveq    #MT_LIOD,d0         ; link in this driver
          trap     #1
          tst.b    d0
@@ -36,18 +36,7 @@
          move.w   BP_INIT,a4     ; Vector to link in new procedures and functions
          jsr      (a4)
          rts
-; Remove driver from chain
-         lea      lnkblk+$18,a0
-         moveq    #mt_riod,d0        ; remove this driver
-         trap     #1
 ;
-release_heap
-; Release the just allocated heap space (Needs to be done in supervisor mode)
-         trap     #0                ; Enter supervisor mode
-         movea.w  MM_RECHP,a4
-         jsr      (a4)         
-; Return to user mode (== clear bit 13 of status register)
-         andi     #$DFFF,sr
 oom_exit
          movea.l  (a7)+,a6
 direct_exit
@@ -105,6 +94,20 @@ msg_unload
 chan_name_sck
          dc.w     4
          dc.b    'SCK_'
+;
+NSLOOKUP
+        moveq     #10,d1         ; Number of bytes on the maths stack needed for the return value
+        move.w    BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack
+        jsr       (a4)           ; No error status is returned on QDOS!
+        move.l    BV_RIP(a6),a1  ; Load maths stack head pointer
+        suba.l    #10,a1          ; Move the top of maths stack by length of string + length word
+        move.l    a1,BV_RIP(a6)  ; Save the updated BV_RIP pointer to tell QDOS where to pick up the return value
+        move.w    #7,0(a6,a1.l)  ; Length of return string
+        move.l    #'0.0.',2(a6,a1.l)
+        move.l    #'0.0X',6(a6,a1.l)
+        moveq     #1,d4          ; Return a string
+        moveq     #0,d0          ; No errors
+        rts
 ;
 open_channel
          movea.l  a0,a2
@@ -255,5 +258,7 @@ KEYWORDS dc.w     1             ; No of procedures we are linking in
          dc.w     QE_UNLOAD-*   ; Pointer to code of first procedure
          dc.b     9,'QE_UNLOAD' ; Name of first procedure
          dc.w     0             ; End marker for procedures
-         dc.w     0             ; No of functions we are linking in
+         dc.w     1             ; No of functions we are linking in
+         dc.w     NSLOOKUP-*    ; Pointer to code of first function
+         dc.b     9,'NSLOOKUP$' ; Name of first function
          dc.w     0             ; End marker for functions
