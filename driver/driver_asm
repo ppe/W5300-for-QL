@@ -107,7 +107,7 @@ NSLOOKUP
          move.b   #IO_SSTRG,d0   ;
          move.w   0(a6,a1.l),d2  ; Length of string
          moveq    #0,d3          ; Timeout == 0
-         movea.l  #0,a0          ; channel id of channel 0
+         suba.l   a0,a0          ; channel id of channel 0 == 0
          lea      2(a6,a1.l),a1  ; Pointer to start of string
          trap     #3
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
