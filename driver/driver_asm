@@ -96,18 +96,43 @@ chan_name_sck
          dc.b    'SCK_'
 ;
 NSLOOKUP
-        moveq     #10,d1         ; Number of bytes on the maths stack needed for the return value
-        move.w    BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack
-        jsr       (a4)           ; No error status is returned on QDOS!
-        move.l    BV_RIP(a6),a1  ; Load maths stack head pointer
-        suba.l    #10,a1          ; Move the top of maths stack by length of string + length word
-        move.l    a1,BV_RIP(a6)  ; Save the updated BV_RIP pointer to tell QDOS where to pick up the return value
-        move.w    #7,0(a6,a1.l)  ; Length of return string
-        move.l    #'0.0.',2(a6,a1.l)
-        move.l    #'0.0X',6(a6,a1.l)
-        moveq     #1,d4          ; Return a string
-        moveq     #0,d0          ; No errors
-        rts
+; Check that the function was called with one parameter
+         lea      8(a3),a0
+         cmpa.l   a0,a5
+         bne      bad_param
+         movea.w  CA_GTSTR,a4
+         jsr      (a4)
+         bne      bad_param      ; Verify that the parameter was a string
+; Echo the parameter to channel #0
+         move.b   #IO_SSTRG,d0   ;
+         move.w   0(a6,a1.l),d2  ; Length of string
+         moveq    #0,d3          ; Timeout == 0
+         movea.l  #0,a0          ; channel id of channel 0
+         lea      2(a6,a1.l),a1  ; Pointer to start of string
+         trap     #3
+; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
+         move.w   d2,d3          ; Save original value
+         andi.b   #1,d2
+         beq      nslookup_update_math_stack
+         addq.w   #1,d3          ; If string length was odd, add one to consume even number of bytes
+nslookup_update_math_stack
+         addq.b   #2,d3          ; Account for the string length word on the stack
+         add.l    d3,BV_RIP(a6)
+         moveq    #10,d1         ; Number of bytes on the maths stack needed for the return value
+         move.w   BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack
+         jsr      (a4)           ; No error status is returned on QDOS!
+         move.l   BV_RIP(a6),a1  ; Load maths stack head pointer
+         suba.l   #10,a1          ; Move the top of maths stack by length of string + length word
+         move.l   a1,BV_RIP(a6)  ; Save the updated BV_RIP pointer to tell QDOS where to pick up the return value
+         move.w   #7,0(a6,a1.l)  ; Length of return string
+         move.l   #'0.0.',2(a6,a1.l)
+         move.l   #'0.0X',6(a6,a1.l)
+         moveq    #1,d4          ; Return a string
+         moveq    #0,d0          ; No errors
+         rts
+bad_param
+         move.b   #ERR_BP,d0
+         rts
 ;
 open_channel
          movea.l  a0,a2
