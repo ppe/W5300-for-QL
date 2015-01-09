@@ -111,13 +111,12 @@ NSLOOKUP
          lea      2(a6,a1.l),a1  ; Pointer to start of string
          trap     #3
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
-         move.w   d2,d3          ; Save original value
-         andi.b   #1,d2
+         btst     #0,d2
          beq      nslookup_update_math_stack
-         addq.w   #1,d3          ; If string length was odd, add one to consume even number of bytes
+         addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
 nslookup_update_math_stack
-         addq.b   #2,d3          ; Account for the string length word on the stack
-         add.l    d3,BV_RIP(a6)
+         addq.b   #2,d2          ; Account for the string length word on the stack
+         add.l    d2,BV_RIP(a6)
          moveq    #10,d1         ; Number of bytes on the maths stack needed for the return value
          move.w   BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack
          jsr      (a4)           ; No error status is returned on QDOS!
