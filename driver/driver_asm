@@ -41,6 +41,19 @@ oom_exit
          movea.l  (a7)+,a6
 direct_exit
          rts
+;
+open_sck_channel
+         moveq    #IO_OPEN,d0
+         moveq    #-1,d1         ; Current job owns the channel
+         moveq    #0,d3          ; Regular open
+         lea      chan_name_sck,a0
+         trap     #2
+         rts
+; Parameters: A0 == channel id of SCK_ channel
+close_sck_channel
+         moveq    #IO_CLOSE,d0
+         trap     #2
+         rts
 ; get_driver_info: utility routine to ask the w5300 driver where its driver linkage block resides
 ; This allows client SuperBasic functions/procedures to gain access to memory reserved by the driver
 ; Corrupts: d0,d1,d3,a1,a1
@@ -48,11 +61,7 @@ direct_exit
 get_driver_info
 ; Open a SCK_ channel so that we can get a reference to the start address of the driver linkage block (just after heap block size word)
 ; by calling a TRAP #3 IO-routine
-         moveq    #IO_OPEN,d0
-         moveq    #-1,d1         ; Current job owns the channel
-         moveq    #0,d3          ; Regular open
-         lea      chan_name_sck,a0
-         trap     #2
+         bsr      open_sck_channel
          tst.b    d0
          bne      get_driver_info_exit
 ; SCK_ channel id is now in A0, correct for trap #3 calls
@@ -64,8 +73,7 @@ get_driver_info
          bne      get_driver_info_exit
          move.l   a1,-(a7)       ; IO_CLOSE corrupts A1, so save it temporarily
 ; Close the SCK_ channel, a0 containing channel id has been preserved in the previous trap
-         moveq    #IO_CLOSE,d0
-         trap     #2
+         bsr      close_sck_channel
          movea.l  (a7)+,a1
 get_driver_info_exit
          rts
