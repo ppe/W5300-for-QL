@@ -164,10 +164,16 @@ close_channel
 channel_IO
          cmpi.b   #QE_IO_DRV_INFO,d0
          beq      driver_info
+         cmpi.b   #IP_GETHOSTBYNAME,d0
+         beq      ip_gethostbyname
          moveq    #0,d0
          rts
 driver_info
          movea.l  a3,a1
+         moveq    #0,d0
+         rts
+ip_gethostbyname
+         nop
          moveq    #0,d0
          rts
 ; Set up the serio pointers area
