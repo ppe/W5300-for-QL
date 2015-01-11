@@ -39,6 +39,7 @@
          move.l   0,(a1)                     ; Indicate this is a new heap
          suba.l   a6,a1                      ; Needs to be relative A6
          lea      QE_MEM_USER_HEAP(a0),a0    ; Start of user heap area
+         move.l   #USER_HEAP_SIZE,d1         ; Number of bytes reserved for the user heap
          suba.l   a6,a0                      ; We need A0 to be A6 relative
          move.b   #MT_LNKFR,d0               ; Trap code
          trap     #1                         ; This trap doesn't report errors
@@ -88,6 +89,28 @@ get_driver_info
          movea.l  (a7)+,a1
 get_driver_info_exit
          rts
+;
+; Allocate user heap
+; Parameters:
+; d1 : number of bytes required
+; a1 : pointer to start of driver linkage block
+; Returns:
+; a0 : pointer to allocated heap block
+; d0 : error code (0 == no error)
+; Corrupts:
+; A0-A3, D0-D3
+allocate_user_heap
+         moveq    #MT_ALLOC,d0         ; Trap code
+         lea      QE_MEM_UH_PTR(a1),a0 ; pointer to pointer to user heap
+         suba.l   a6,a0                ; Make the pointer relative to A6
+         trap     #1
+         tst.l    d0                   ; Did it work ?
+         beq.s    user_heap_alloc_ok
+         rts
+user_heap_alloc_ok
+         adda.l   a6,a0                ; The address we get back is relative A6, so absolute it
+         rts
+;
 
 QE_UNLOAD
          move.b   #IO_SSTRG,d0    ; Write unload notification message on channel #0
@@ -132,33 +155,68 @@ NSLOOKUP
 ; Check that the function was called with one parameter
          lea      8(a3),a0
          cmpa.l   a0,a5
-         bne      bad_param
+         beq      nslookup_num_params_ok
+         move.b   #ERR_BP,d0
+         bra      exit_with_error
+nslookup_num_params_ok
          movea.w  CA_GTSTR,a4
          jsr      (a4)
-         bne      bad_param      ; Verify that the parameter was a string
+         tst.l    d0
+         beq      nslookup_string_param_ok
+         move.b   #ERR_BP,d0
+         bra      exit_with_error      ; Verify that the parameter was a string
+nslookup_string_param_ok
 ; Verify that the name is not longer than the maximum length of 254 characters == 255 octets DNS label encoded
          move.w   0(a6,a1.l),d2  ; Length of string
          cmpi.w   #DNS_MAX_NAME_LEN,d2
-         bhi      bad_param_update_RIP
+         bls      nslookup_check_null_name
+         move.b   #ERR_BP,d0
+         bra      exit_update_RIP
+nslookup_check_null_name
          tst.w    d2
-         beq      bad_param_update_RIP  ; Don't accept an empty string
-         lea      2(a6,a1.l),a1  ; Pointer to start of string
-         movem.l  d2/a1,-(a7)
-         bsr      get_driver_info
+         bne      nslookup_param_ok       ; Don't accept an empty string
+         move.b   #ERR_BP,d0
+         bra      exit_update_RIP
+nslookup_param_ok
+         lea      2(a6,a1.l),a1           ; Pointer to start of string
+         movem.l  d2/a1,-(a7)             ; a1 pushed first -> d2 ends up at lower address, a1 at higher
+         bsr      get_driver_info         ; A1 := pointer to driver linkage block
+         tst.b    d0
+         beq      nslookup_driver_info_ok
+         move.b   #ERR_NF,d0
+         bra      exit_pop_regs_update_RIP
+nslookup_driver_info_ok
+         movea.l  a1,a5                   ; Save pointer to linkage block in a5
+         move.l   (a7),d1                 ; Length of string from stack
+         bsr      allocate_user_heap
          movem.l  (a7)+,d2/a2
          tst.b    d0
-         bne      bad_param_update_RIP
+         beq      copy_hostname_to_temp_buffer
+         move.b   #ERR_OM,d0
+         bra      exit_update_RIP
 ; Copy the hostname to temporary buffer in the driver's linkage block
+; A0 -> user heap temp block
 ; D2 == length of hostname string on maths stack
 ; A2 -> start of hostname string on maths stack
-         lea      QE_MEM_HOSTNAME(a1),a0
-         move.b   d2,d0
+copy_hostname_to_temp_buffer
+         lea      4(a0),a4       ; First 4 bytes are allocation block size
+         move.w   d2,d0
+         move.w   d2,d5          ; Save length of string in D5
+         subq.w   #1,d0          ; For dbra looping dn needs to be num_loops-1
 nslookup_name_copy_loop
-         move.b   (a2)+,(a0)+
+         move.b   (a2)+,(a4)+
          dbra     d0,nslookup_name_copy_loop
 ; Terminate the string with a C-style end of string marker
-         move.b   #0,(a0)
+         move.b   #0,(a4)
+; Deallocate user heap
+         moveq    #MT_LNKFR,d0      ; Trap code
+         move.l   0(a0),d1          ; Size - assumes A0 has not changed during usage above
+         suba.l   a6,a0             ; A0 has to be relative a6
+         lea      QE_MEM_UH_PTR(a5),a1    ; A5 == pointer to driver linkage block, saved after driver_info
+         suba.l   a6,a1             ; Which has also to be relative A6
+         trap     #1                ; Deallocate the 200 byte area
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
+         move.w   d5,d2
          btst     #0,d2
          beq      nslookup_update_math_stack
          addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
@@ -177,12 +235,14 @@ nslookup_update_math_stack
          moveq    #1,d4          ; Return a string
          moveq    #0,d0          ; No errors
          rts
-bad_param_update_RIP
+exit_pop_regs_update_RIP
+         movem.l  (a7)+,d2/a2
+exit_update_RIP
 ; Entered with length of string in d2
          addq.b   #2,d2          ; Add 2 to account for the string length word on the stack
          add.l    d2,BV_RIP(a6)
-bad_param
-         move.b   #ERR_BP,d0
+exit_with_error
+; Error code should be in d0
          rts
 ;
 open_channel
