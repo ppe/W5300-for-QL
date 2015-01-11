@@ -3,21 +3,23 @@
          moveq    #0,d0
          trap     #1
 ; >>> Allocate storage for driver from common heap <<<
-; Sysvars address passed in A6, save old A6
-         move.l   a6,-(a7)
-         movea.l  a0,a6
-         move.l   #HEAP_SIZE,d1     ; Number of bytes required
+; This storage area will also include a user heap to be used for temporary storage needs
+;
 ; MM_ALCHP has to be called in supervisor mode
          trap     #0                ; Enter supervisor mode
+; Sysvars address need to be passed in A6, save old A6 that Superbasic has set (safe, because we are in supervisor mode)
+         move.l   a6,-(a7)
+         movea.l  a0,a6
+         move.l   #HEAP_SIZE,d1     ; Number of bytes required for all memory needs of this driver + associated keywords
          movea.w  MM_ALCHP,a4
          jsr      (a4)
+         movea.l  (a7)+,a6            ; Restore original SuperBasic A6
 ; Return to user mode (== clear bit 13 of status register)
          andi     #$DFFF,sr
          bne      oom_exit
 ; On successful return from MM_ALCHP, A0 points to start of allocated area
 ; First 4 bytes of the allocated area contains the size of the heap fragment and should be preserved
 ; Set up the driver linkage (standard version) block
-         movea.l  (a7)+,a6
          lea      4(a0),a1
          adda.l   #$1C,a1
          lea      channel_IO,a2
@@ -31,6 +33,15 @@
          trap     #1
          tst.b    d0
          bne      direct_exit
+         suba.l   #$18,a0             ; Reset A0 to point to start of linkage block
+; Set up a user heap for temporary storage needs
+         lea      QE_MEM_UH_PTR(a0),a1       ; Pointer to heap header
+         move.l   0,(a1)                     ; Indicate this is a new heap
+         suba.l   a6,a1                      ; Needs to be relative A6
+         lea      QE_MEM_USER_HEAP(a0),a0    ; Start of user heap area
+         suba.l   a6,a0                      ; We need A0 to be A6 relative
+         move.b   #MT_LNKFR,d0               ; Trap code
+         trap     #1                         ; This trap doesn't report errors
 ; Set up SuperBasic keywords
          lea      KEYWORDS,a1
          move.w   BP_INIT,a4     ; Vector to link in new procedures and functions
