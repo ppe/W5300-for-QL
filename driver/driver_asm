@@ -41,15 +41,12 @@ oom_exit
          movea.l  (a7)+,a6
 direct_exit
          rts
-;
-QE_UNLOAD
-         move.b   #IO_SSTRG,d0    ; Write unload notification message on channel #0
-         move.l   #24,d2           ; Length of message
-         moveq    #0,d3           ; Timeout == 0
-         movea.l  #0,a0           ; channel id of channel 0
-         lea      msg_unload,a1
-         trap     #3
-; Open a SCK_ channel so that we can get a reference to the address of the driver linkage block
+; get_driver_info: utility routine to ask the w5300 driver where its driver linkage block resides
+; This allows client SuperBasic functions/procedures to gain access to memory reserved by the driver
+; Corrupts: d0,d1,d3,a1,a1
+; Returns: A1 = pointer to start of driver definition block
+get_driver_info
+; Open a SCK_ channel so that we can get a reference to the start address of the driver linkage block (just after heap block size word)
 ; by calling a TRAP #3 IO-routine
          moveq    #IO_OPEN,d0
          moveq    #-1,d1         ; Current job owns the channel
@@ -57,16 +54,33 @@ QE_UNLOAD
          lea      chan_name_sck,a0
          trap     #2
          tst.b    d0
-         bne      unload_exit
-; Channel id is now in A0, correct for trap #3 calls
+         bne      get_driver_info_exit
+; SCK_ channel id is now in A0, correct for trap #3 calls
 ; QE_IO_DRV_INFO returns pointer to start of driver definition block in a1
          move.b   #QE_IO_DRV_INFO,d0
          moveq    #-1,d3         ; Timeout
          trap     #3
-         move.l   a1,-(a7)       ; Save the result
-; Close the channel, a0 containing channel id has been preserved in the previous trap
+         tst.b    d0
+         bne      get_driver_info_exit
+         move.l   a1,-(a7)       ; IO_CLOSE corrupts A1, so save it temporarily
+; Close the SCK_ channel, a0 containing channel id has been preserved in the previous trap
          moveq    #IO_CLOSE,d0
          trap     #2
+         movea.l  (a7)+,a1
+get_driver_info_exit
+         rts
+
+QE_UNLOAD
+         move.b   #IO_SSTRG,d0    ; Write unload notification message on channel #0
+         move.l   #24,d2           ; Length of message
+         moveq    #0,d3           ; Timeout == 0
+         movea.l  #0,a0           ; channel id of channel 0
+         lea      msg_unload,a1
+         trap     #3
+         bsr      get_driver_info
+         tst.b    d0
+         bne      unload_exit
+         move.l   a1,-(a7)       ; Save the result
 ; Get QDOS info to get sysvars address in a0, sysvars needed in A6 for MM_RECHP
          moveq    #0,d0
          trap     #1
@@ -165,14 +179,14 @@ channel_IO
          cmpi.b   #QE_IO_DRV_INFO,d0
          beq      driver_info
          cmpi.b   #IP_GETHOSTBYNAME,d0
-         beq      ip_gethostbyname
+         beq      ip_gethostbyname_impl
          moveq    #0,d0
          rts
 driver_info
          movea.l  a3,a1
          moveq    #0,d0
          rts
-ip_gethostbyname
+ip_gethostbyname_impl
          nop
          moveq    #0,d0
          rts
