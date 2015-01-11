@@ -117,13 +117,11 @@ NSLOOKUP
          movea.w  CA_GTSTR,a4
          jsr      (a4)
          bne      bad_param      ; Verify that the parameter was a string
-; Echo the parameter to channel #0
-         move.b   #IO_SSTRG,d0   ;
+; Verify that the name is not longer than the maximum length of 254 characters == 255 octets DNS label encoded
          move.w   0(a6,a1.l),d2  ; Length of string
-         moveq    #0,d3          ; Timeout == 0
-         suba.l   a0,a0          ; channel id of channel 0 == 0
+         cmpi.w   #DNS_MAX_NAME_LEN,d2
+         bhi      bad_param_update_RIP
          lea      2(a6,a1.l),a1  ; Pointer to start of string
-         trap     #3
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
          btst     #0,d2
          beq      nslookup_update_math_stack
@@ -143,6 +141,10 @@ nslookup_update_math_stack
          moveq    #1,d4          ; Return a string
          moveq    #0,d0          ; No errors
          rts
+bad_param_update_RIP
+; Entered with length of string in d2
+         addq.b   #2,d2          ; Add 2 to account for the string length word on the stack
+         add.l    d2,BV_RIP(a6)
 bad_param
          move.b   #ERR_BP,d0
          rts
