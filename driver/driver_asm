@@ -129,7 +129,24 @@ NSLOOKUP
          move.w   0(a6,a1.l),d2  ; Length of string
          cmpi.w   #DNS_MAX_NAME_LEN,d2
          bhi      bad_param_update_RIP
+         tst.w    d2
+         beq      bad_param_update_RIP  ; Don't accept an empty string
          lea      2(a6,a1.l),a1  ; Pointer to start of string
+         movem.l  d2/a1,-(a7)
+         bsr      get_driver_info
+         movem.l  (a7)+,d2/a2
+         tst.b    d0
+         bne      bad_param_update_RIP
+; Copy the hostname to temporary buffer in the driver's linkage block
+; D2 == length of hostname string on maths stack
+; A2 -> start of hostname string on maths stack
+         lea      QE_MEM_HOSTNAME(a1),a0
+         move.b   d2,d0
+nslookup_name_copy_loop
+         move.b   (a2)+,(a0)+
+         dbra     d0,nslookup_name_copy_loop
+; Terminate the string with a C-style end of string marker
+         move.b   #0,(a0)
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
          btst     #0,d2
          beq      nslookup_update_math_stack
