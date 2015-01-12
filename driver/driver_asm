@@ -178,20 +178,24 @@ nslookup_check_null_name
          move.b   #ERR_BP,d0
          bra      exit_update_RIP
 nslookup_param_ok
-         lea      2(a6,a1.l),a1           ; Pointer to start of string
-         movem.l  d2/a1,-(a7)             ; a1 pushed first -> d2 ends up at lower address, a1 at higher
-         bsr      get_driver_info         ; A1 := pointer to driver linkage block
+         link     a5,#-NSL_LOCAL_VARS_SIZE    ; Allocate space on stack for local variables, a5 becomes frame pointer (FP)
+         lea      2(a6,a1.l),a1              ; Pointer to start of string
+         move.l   a1,NSL_NAMEPTR(a5)         ; Save pointer in local frame
+         move.w   d2,NSL_W_NAMELEN(a5)       ; Save length of string
+         bsr      get_driver_info            ; Set A1 = pointer to driver linkage block
          tst.b    d0
          beq      nslookup_driver_info_ok
+         unlk     a5
          move.b   #ERR_NF,d0
-         bra      exit_pop_regs_update_RIP
+         bra      exit_update_RIP
 nslookup_driver_info_ok
-         movea.l  a1,a5                   ; Save pointer to linkage block in a5
-         move.l   (a7),d1                 ; Length of string from stack
-         bsr      allocate_user_heap
-         movem.l  (a7)+,d2/a2
+         move.l   a1,NSL_DRVLBPTR(a5)        ; Save pointer to linkage block
+         move.w   NSL_W_NAMELEN(a5),d1       ; Length of string from stack
+         bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
+; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
          beq      copy_hostname_to_temp_buffer
+         unlk     a5
          move.b   #ERR_OM,d0
          bra      exit_update_RIP
 ; Copy the hostname to temporary buffer in the driver's linkage block
@@ -199,24 +203,27 @@ nslookup_driver_info_ok
 ; D2 == length of hostname string on maths stack
 ; A2 -> start of hostname string on maths stack
 copy_hostname_to_temp_buffer
+         move.w   NSL_W_NAMELEN(a5),d0
+         movea.l  NSL_NAMEPTR(a5),a2
          lea      4(a0),a4       ; First 4 bytes are allocation block size
-         move.w   d2,d0
-         move.w   d2,d5          ; Save length of string in D5
          subq.w   #1,d0          ; For dbra looping dn needs to be num_loops-1
 nslookup_name_copy_loop
          move.b   (a2)+,(a4)+
          dbra     d0,nslookup_name_copy_loop
 ; Terminate the string with a C-style end of string marker
          move.b   #0,(a4)
+; TODO allocate user heap block for struct hostent buffer
+; TODO call gethostbyname
 ; Deallocate user heap
-         moveq    #MT_LNKFR,d0      ; Trap code
-         move.l   0(a0),d1          ; Size - assumes A0 has not changed during usage above
-         suba.l   a6,a0             ; A0 has to be relative a6
-         lea      QE_MEM_UH_PTR(a5),a1    ; A5 == pointer to driver linkage block, saved after driver_info
-         suba.l   a6,a1             ; Which has also to be relative A6
-         trap     #1                ; Deallocate the 200 byte area
+         moveq    #MT_LNKFR,d0            ; Trap code
+         move.l   0(a0),d1                ; Size - assumes A0 has not changed during usage above
+         suba.l   a6,a0                   ; A0 has to be relative a6
+         movea.l  NSL_DRVLBPTR(a5),a4
+         lea      QE_MEM_UH_PTR(a4),a1
+         suba.l   a6,a1                   ; Which has also to be relative A6
+         trap     #1                      ; Deallocate the 200 byte area
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
-         move.w   d5,d2
+         move.w   NSL_W_NAMELEN(a5),d2
          btst     #0,d2
          beq      nslookup_update_math_stack
          addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
@@ -234,9 +241,8 @@ nslookup_update_math_stack
          move.l   #'0.0X',6(a6,a1.l)
          moveq    #1,d4          ; Return a string
          moveq    #0,d0          ; No errors
+         unlk     a5
          rts
-exit_pop_regs_update_RIP
-         movem.l  (a7)+,d2/a2
 exit_update_RIP
 ; Entered with length of string in d2
          addq.b   #2,d2          ; Add 2 to account for the string length word on the stack
@@ -284,6 +290,22 @@ driver_info
          movea.l  a3,a1
          moveq    #0,d0
          rts
+; Provides gethostbyname(2) functionality
+;
+;    Input
+;
+;    D0 = IP_GETHOSTBYNAME
+;    D3 = (short) timeout (-1)
+;
+;    A0 = (chanid_t *) channel ID
+;         A1 = (char *) name       // NULL terminated
+;         A2 = (struct hostent *)hostent buffer   // minimum of 500 bytes
+;
+; The buffer pointed to by A2 must be at large enough to hold the
+; largest struct hostent returned.
+;
+;    D0 = result
+;
 ip_gethostbyname_impl
          nop
          moveq    #0,d0
