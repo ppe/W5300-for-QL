@@ -111,7 +111,22 @@ user_heap_alloc_ok
          adda.l   a6,a0                ; The address we get back is relative A6, so absolute it
          rts
 ;
-
+; Deallocate user heap
+; Parameters:
+; a0 : pointer to start of allocated block (starting with the long word containing block size)
+; a1 : pointer to start of driver linkage block
+; Returns:
+; nothing, LNKFR does not report errors!
+; Corrupts:
+; A0-A3, D0-D3
+deallocate_user_heap
+         moveq    #MT_LNKFR,d0            ; Trap code
+         move.l   0(a0),d1                ; Size of block to be released
+         suba.l   a6,a0                   ; A0 has to be relative a6
+         lea      QE_MEM_UH_PTR(a1),a1
+         suba.l   a6,a1                   ; Which has also to be relative A6
+         trap     #1                      ; Deallocate the 200 byte area
+         rts
 QE_UNLOAD
          move.b   #IO_SSTRG,d0    ; Write unload notification message on channel #0
          move.l   #24,d2           ; Length of message
@@ -194,6 +209,17 @@ nslookup_driver_info_ok
          bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
+         beq      allocate_struct_hostent_buffer
+         unlk     a5
+         move.b   #ERR_OM,d0
+         bra      exit_update_RIP
+allocate_struct_hostent_buffer
+         move.l   a0,NSL_NAMEBUFPTR(a5)
+         move.w   #STRUCT_HE_SIZE+HOSTENT_BUF_SIZE,d1          ; Size of temporary struct bufent and associated data
+         movea.l  NSL_DRVLBPTR(a5),a1                          ; Pointer go start of linkage block
+         bsr      allocate_user_heap                           ; A1 = ptr to driver linkage block, d1 = required size
+; A0 now contains pointer to start of allocated block if return status == 0
+         tst.b    d0
          beq      copy_hostname_to_temp_buffer
          unlk     a5
          move.b   #ERR_OM,d0
@@ -203,6 +229,8 @@ nslookup_driver_info_ok
 ; D2 == length of hostname string on maths stack
 ; A2 -> start of hostname string on maths stack
 copy_hostname_to_temp_buffer
+         move.l   a0,NSL_STRUCT_HE_BUF(a5)
+         movea.l  NSL_NAMEBUFPTR(a5),a0
          move.w   NSL_W_NAMELEN(a5),d0
          movea.l  NSL_NAMEPTR(a5),a2
          lea      4(a0),a4       ; First 4 bytes are allocation block size
@@ -214,14 +242,13 @@ nslookup_name_copy_loop
          move.b   #0,(a4)
 ; TODO allocate user heap block for struct hostent buffer
 ; TODO call gethostbyname
-; Deallocate user heap
-         moveq    #MT_LNKFR,d0            ; Trap code
-         move.l   0(a0),d1                ; Size - assumes A0 has not changed during usage above
-         suba.l   a6,a0                   ; A0 has to be relative a6
-         movea.l  NSL_DRVLBPTR(a5),a4
-         lea      QE_MEM_UH_PTR(a4),a1
-         suba.l   a6,a1                   ; Which has also to be relative A6
-         trap     #1                      ; Deallocate the 200 byte area
+; Deallocate space reserved on the user heap
+         movea.l  NSL_STRUCT_HE_BUF(a5),a0
+         movea.l  NSL_DRVLBPTR(a5),a1
+         bsr      deallocate_user_heap
+         movea.l  NSL_NAMEBUFPTR(a5),a0
+         movea.l  NSL_DRVLBPTR(a5),a1
+         bsr      deallocate_user_heap
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
          move.w   NSL_W_NAMELEN(a5),d2
          btst     #0,d2
