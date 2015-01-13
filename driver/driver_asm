@@ -241,7 +241,6 @@ nslookup_name_copy_loop
          dbra     d0,nslookup_name_copy_loop
 ; Terminate the string with a C-style end of string marker
          move.b   #0,(a4)
-; TODO allocate user heap block for struct hostent buffer
 ; TODO call gethostbyname
 ; Deallocate space reserved on the user heap
          movea.l  NSL_STRUCT_HE_BUF(a5),a0
@@ -251,6 +250,7 @@ nslookup_name_copy_loop
          movea.l  NSL_DRVLBPTR(a5),a1
          bsr      deallocate_user_heap
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
+         clr.l    d2
          move.w   NSL_W_NAMELEN(a5),d2
          btst     #0,d2
          beq      nslookup_update_math_stack
