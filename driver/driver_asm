@@ -206,6 +206,7 @@ nslookup_param_ok
 nslookup_driver_info_ok
          move.l   a1,NSL_DRVLBPTR(a5)        ; Save pointer to linkage block
          move.w   NSL_W_NAMELEN(a5),d1       ; Length of string from stack
+         addq.w   #1,d1                      ; Add one for the terminating null that will be appended
          bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
