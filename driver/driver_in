@@ -11,6 +11,7 @@ QE_IO_DRV_INFO       equ      $7E
 QE_MEM_UH_PTR        equ      $28         ; Long word pointer to user heap base address (needed for QDOS user heap MT_ALLOC calls)
 QE_MEM_HOSTNAME      equ      $100        ; Offset for buffer to contain a DNS hostname, maximum length of DNS hostname is 255 octets
 QE_MEM_USER_HEAP     equ      $200        ; Offset to start of user heap
+STRUCT_HE_SIZE       equ      20          ; Size of struct hostent
 STRUCT_HE_HNAME      equ      $0
 STRUCT_HE_HALIASES   equ      $4
 STRUCT_HE_HADDRTYPE  equ      $8
