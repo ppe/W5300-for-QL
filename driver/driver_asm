@@ -248,7 +248,15 @@ nslookup_name_copy_loop
          dbra     d0,nslookup_name_copy_loop
 ; Terminate the string with a C-style end of string marker
          move.b   #0,(a4)
-; TODO call gethostbyname
+; Call gethostbyname
+         moveq    #IP_GETHOSTBYNAME,d0
+         moveq    #-1,d3                  ; Timeout, -1 == wait for as long as it takes
+         movea.l  NSL_SCK_CHANNEL(a5),a0
+         movea.l  NSL_NAMEBUFPTR(a5),a1
+         adda.l   #4,a1                      ; Skip over heap block size long word
+         movea.l  NSL_STRUCT_HE_BUF(a5),a2
+         adda.l   #4,a2                      ; Skip over heap block size long word
+         trap     #3
          move.b   #0,-(a7)
 ; Deallocate space reserved on the user heap
          movea.l  NSL_STRUCT_HE_BUF(a5),a0
