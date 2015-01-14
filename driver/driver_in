@@ -18,9 +18,10 @@ STRUCT_HE_HALIASES   equ      $4
 STRUCT_HE_HADDRTYPE  equ      $8
 STRUCT_HE_HLEN       equ      $C
 STRUCT_HE_HADDRLIST  equ      $10
-NSL_LOCAL_VARS_SIZE  equ      18          ; Local variables frame size for nslookup
+NSL_LOCAL_VARS_SIZE  equ      22          ; Local variables frame size for nslookup
 NSL_W_NAMELEN        equ      -2          ; Frame pointer (FP) offset to length of name parameter string
 NSL_NAMEPTR          equ      -6          ; FP offset for pointer to start of name parameter string
 NSL_NAMEBUFPTR       equ      -10         ; FP offset for pointer to temporary name buffer
 NSL_DRVLBPTR         equ      -14         ; FP offset for pointer to driver linkage block
 NSL_STRUCT_HE_BUF    equ      -18         ; FP offset for pointer to temporary struct hostent buffer
+NSL_SCK_CHANNEL      equ      -22         ; Channel id of SCK_ channel

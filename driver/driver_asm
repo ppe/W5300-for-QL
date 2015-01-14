@@ -60,7 +60,7 @@ open_sck_channel
          moveq    #0,d3          ; Regular open
          lea      chan_name_sck,a0
          trap     #2
-         rts
+         rts                     ; Return channel id in a0, error code in d0
 ; Parameters: A0 == channel id of SCK_ channel
 close_sck_channel
          moveq    #IO_CLOSE,d0
@@ -68,25 +68,17 @@ close_sck_channel
          rts
 ; get_driver_info: utility routine to ask the w5300 driver where its driver linkage block resides
 ; This allows client SuperBasic functions/procedures to gain access to memory reserved by the driver
+; Parameters
+; Entry: a0 = channel id of SCK_ channel
 ; Corrupts: d0,d1,d3,a1,a1
 ; Returns: A1 = pointer to start of driver definition block
 get_driver_info
-; Open a SCK_ channel so that we can get a reference to the start address of the driver linkage block (just after heap block size word)
-; by calling a TRAP #3 IO-routine
-         bsr      open_sck_channel
-         tst.b    d0
-         bne      get_driver_info_exit
-; SCK_ channel id is now in A0, correct for trap #3 calls
 ; QE_IO_DRV_INFO returns pointer to start of driver definition block in a1
          move.b   #QE_IO_DRV_INFO,d0
          moveq    #-1,d3         ; Timeout
          trap     #3
          tst.b    d0
          bne      get_driver_info_exit
-         move.l   a1,-(a7)       ; IO_CLOSE corrupts A1, so save it temporarily
-; Close the SCK_ channel, a0 containing channel id has been preserved in the previous trap
-         bsr      close_sck_channel
-         movea.l  (a7)+,a1
 get_driver_info_exit
          rts
 ;
@@ -134,6 +126,10 @@ QE_UNLOAD
          movea.l  #0,a0           ; channel id of channel 0
          lea      msg_unload,a1
          trap     #3
+         bsr      open_sck_channel
+         tst.b    d0
+         bne      unload_exit
+         move.l   a0,-(a7)
          bsr      get_driver_info
          tst.b    d0
          bne      unload_exit
@@ -157,6 +153,8 @@ QE_UNLOAD
 ; Reset a6 to original value
          movea.l  (a7),a6
          adda.l   #8,a7                ; remove sysvars + driver block pointer from stack
+         movea.l  (a7)+,a0
+         bsr      close_sck_channel
          moveq    #0,d0
 unload_exit
          rts
@@ -197,12 +195,17 @@ nslookup_param_ok
          lea      2(a6,a1.l),a1              ; Pointer to start of string
          move.l   a1,NSL_NAMEPTR(a5)         ; Save pointer in local frame
          move.w   d2,NSL_W_NAMELEN(a5)       ; Save length of string
+         bsr      open_sck_channel
+         tst.b    d0
+         bne      nslookup_exit_driver_info
+         move.l   a0,NSL_SCK_CHANNEL(a5)
          bsr      get_driver_info            ; Set A1 = pointer to driver linkage block
          tst.b    d0
          beq      nslookup_driver_info_ok
+nslookup_exit_driver_info
          unlk     a5
          move.b   #ERR_NF,d0
-         bra      exit_update_RIP
+         bra      exit_close_sck_update_RIP
 nslookup_driver_info_ok
          move.l   a1,NSL_DRVLBPTR(a5)        ; Save pointer to linkage block
          move.w   NSL_W_NAMELEN(a5),d1       ; Length of string from stack
@@ -213,7 +216,7 @@ nslookup_driver_info_ok
          beq      allocate_struct_hostent_buffer
          unlk     a5
          move.b   #ERR_OM,d0
-         bra      exit_update_RIP
+         bra      exit_close_sck_update_RIP
 allocate_struct_hostent_buffer
          move.l   a0,NSL_NAMEBUFPTR(a5)
          move.w   #STRUCT_HE_SIZE+HOSTENT_BUF_SIZE,d1          ; Size of temporary struct bufent and associated data
@@ -229,7 +232,7 @@ allocate_struct_hostent_buffer
          bsr      deallocate_user_heap
          unlk     a5
          move.b   #ERR_OM,d0
-         bra      exit_update_RIP
+         bra      exit_close_sck_update_RIP
 ; Copy the hostname to temporary buffer in the driver's linkage block
 ; A0 -> user heap temp block
 ; D2 == length of hostname string on maths stack
@@ -247,6 +250,9 @@ nslookup_name_copy_loop
 ; Terminate the string with a C-style end of string marker
          move.b   #0,(a4)
 ; TODO call gethostbyname
+; Close SCK_ channel
+         movea.l  NSL_SCK_CHANNEL(a5),a0
+         bsr      close_sck_channel
 ; Deallocate space reserved on the user heap
          movea.l  NSL_STRUCT_HE_BUF(a5),a0
          movea.l  NSL_DRVLBPTR(a5),a1
@@ -276,8 +282,18 @@ nslookup_update_math_stack
          moveq    #0,d0          ; No errors
          unlk     a5
          rts
+exit_close_sck_update_RIP
+         move.l   d0,-(a7)                   ; Save error value
+         movea.l  NSL_SCK_CHANNEL(a5),a0
+         bsr      close_sck_channel
+         move.l   (a7)+,d0
+         move.w   NSL_W_NAMELEN(a5),d2       ; Load length of string
 exit_update_RIP
 ; Entered with length of string in d2
+         btst     #0,d2
+         beq      exit_update_math_stack
+         addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
+exit_update_math_stack
          addq.b   #2,d2          ; Add 2 to account for the string length word on the stack
          add.l    d2,BV_RIP(a6)
 exit_with_error
