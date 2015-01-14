@@ -214,6 +214,7 @@ nslookup_driver_info_ok
 ; Allocate temporary buffer for hostname on user heap
          move.w   NSL_W_NAMELEN(a5),d1       ; Length of string from stack
          addq.w   #1,d1                      ; Add one for the terminating null that will be appended
+         addq.w   #8,d1                      ; Add user heap block book keeping overhead
          bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
@@ -223,6 +224,7 @@ nslookup_driver_info_ok
 allocate_struct_hostent_buffer
          move.l   a0,NSL_NAMEBUFPTR(a5)
          move.w   #STRUCT_HE_SIZE+HOSTENT_BUF_SIZE,d1          ; Size of temporary struct bufent and associated data
+         addq.w   #8,d1                                        ; Add user heap block book keeping overhead
          movea.l  NSL_DRVLBPTR(a5),a1                          ; Pointer go start of linkage block
          bsr      allocate_user_heap                           ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
@@ -241,7 +243,7 @@ copy_hostname_to_temp_buffer
          movea.l  NSL_NAMEBUFPTR(a5),a0
          move.w   NSL_W_NAMELEN(a5),d0
          movea.l  NSL_NAMEPTR(a5),a2
-         lea      4(a0),a4       ; First 4 bytes are allocation block size
+         lea      8(a0),a4       ; First 8 bytes are allocation block book keeping info
          subq.w   #1,d0          ; For dbra looping dn needs to be num_loops-1
 nslookup_name_copy_loop
          move.b   (a2)+,(a4)+
@@ -253,9 +255,9 @@ nslookup_name_copy_loop
          moveq    #-1,d3                  ; Timeout, -1 == wait for as long as it takes
          movea.l  NSL_SCK_CHANNEL(a5),a0
          movea.l  NSL_NAMEBUFPTR(a5),a1
-         adda.l   #4,a1                      ; Skip over heap block size long word
+         adda.l   #8,a1                      ; Skip over heap block book keeping info
          movea.l  NSL_STRUCT_HE_BUF(a5),a2
-         adda.l   #4,a2                      ; Skip over heap block size long word
+         adda.l   #8,a2                      ; Skip over heap block book keeping info
          trap     #3
          move.b   #0,-(a7)
 ; Deallocate space reserved on the user heap
