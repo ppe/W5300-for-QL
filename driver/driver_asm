@@ -169,54 +169,57 @@ NSLOOKUP
          lea      8(a3),a0
          cmpa.l   a0,a5
          beq      nslookup_num_params_ok
-         move.b   #ERR_BP,d0
-         bra      exit_with_error
+         moveq    #ERR_BP,d0
+         rts
 nslookup_num_params_ok
          movea.w  CA_GTSTR,a4
          jsr      (a4)
          tst.l    d0
          beq      nslookup_string_param_ok
-         move.b   #ERR_BP,d0
-         bra      exit_with_error      ; Verify that the parameter was a string
+         moveq    #ERR_BP,d0
+         rts
 nslookup_string_param_ok
 ; Verify that the name is not longer than the maximum length of 254 characters == 255 octets DNS label encoded
          move.w   0(a6,a1.l),d2  ; Length of string
          cmpi.w   #DNS_MAX_NAME_LEN,d2
          bls      nslookup_check_null_name
-         move.b   #ERR_BP,d0
-         bra      exit_update_RIP
+         moveq    #ERR_BP,d0
+         rts
 nslookup_check_null_name
          tst.w    d2
          bne      nslookup_param_ok       ; Don't accept an empty string
-         move.b   #ERR_BP,d0
-         bra      exit_update_RIP
+         moveq    #ERR_BP,d0
+         rts
 nslookup_param_ok
          link     a5,#-NSL_LOCAL_VARS_SIZE    ; Allocate space on stack for local variables, a5 becomes frame pointer (FP)
          lea      2(a6,a1.l),a1              ; Pointer to start of string
          move.l   a1,NSL_NAMEPTR(a5)         ; Save pointer in local frame
          move.w   d2,NSL_W_NAMELEN(a5)       ; Save length of string
+; Open SCK_ channel to get driver info and netdb access
          bsr      open_sck_channel
          tst.b    d0
-         bne      nslookup_exit_driver_info
+         beq      nslookup_get_driver_info
+         unlk     a5
+         moveq    #ERR_NF,d0
+         rts
+nslookup_get_driver_info
          move.l   a0,NSL_SCK_CHANNEL(a5)
          bsr      get_driver_info            ; Set A1 = pointer to driver linkage block
          tst.b    d0
          beq      nslookup_driver_info_ok
-nslookup_exit_driver_info
-         unlk     a5
-         move.b   #ERR_NF,d0
-         bra      exit_close_sck_update_RIP
+         move.b   #ERR_NF,-(a7)
+         bra      exit_close_sck
 nslookup_driver_info_ok
          move.l   a1,NSL_DRVLBPTR(a5)        ; Save pointer to linkage block
+; Allocate temporary buffer for hostname on user heap
          move.w   NSL_W_NAMELEN(a5),d1       ; Length of string from stack
          addq.w   #1,d1                      ; Add one for the terminating null that will be appended
          bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
          beq      allocate_struct_hostent_buffer
-         unlk     a5
-         move.b   #ERR_OM,d0
-         bra      exit_close_sck_update_RIP
+         move.b   #ERR_OM,-(a7)
+         bra      exit_close_sck
 allocate_struct_hostent_buffer
          move.l   a0,NSL_NAMEBUFPTR(a5)
          move.w   #STRUCT_HE_SIZE+HOSTENT_BUF_SIZE,d1          ; Size of temporary struct bufent and associated data
@@ -227,12 +230,8 @@ allocate_struct_hostent_buffer
          beq      copy_hostname_to_temp_buffer
 ; struct hostent allocation failed, clean up and exit
 ; Unallocate temp hostname buffer
-         movea.l  NSL_NAMEBUFPTR(a5),a0
-         movea.l  NSL_DRVLBPTR(a5),a1
-         bsr      deallocate_user_heap
-         unlk     a5
-         move.b   #ERR_OM,d0
-         bra      exit_close_sck_update_RIP
+         move.b   #ERR_OM,-(a7)
+         bra      exit_unallocate_name_buf_close_sck
 ; Copy the hostname to temporary buffer in the driver's linkage block
 ; A0 -> user heap temp block
 ; D2 == length of hostname string on maths stack
@@ -250,16 +249,21 @@ nslookup_name_copy_loop
 ; Terminate the string with a C-style end of string marker
          move.b   #0,(a4)
 ; TODO call gethostbyname
-; Close SCK_ channel
-         movea.l  NSL_SCK_CHANNEL(a5),a0
-         bsr      close_sck_channel
+         move.b   #0,-(a7)
 ; Deallocate space reserved on the user heap
          movea.l  NSL_STRUCT_HE_BUF(a5),a0
          movea.l  NSL_DRVLBPTR(a5),a1
          bsr      deallocate_user_heap
+exit_unallocate_name_buf_close_sck
          movea.l  NSL_NAMEBUFPTR(a5),a0
          movea.l  NSL_DRVLBPTR(a5),a1
          bsr      deallocate_user_heap
+exit_close_sck
+         movea.l  NSL_SCK_CHANNEL(a5),a0
+         bsr      close_sck_channel
+         clr.l    d0
+         move.b   (a7)+,d0
+         bne      exit_unlink    ; When return status is != 0, math stack will be cleaned automatically
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
          clr.l    d2
          move.w   NSL_W_NAMELEN(a5),d2
@@ -280,24 +284,8 @@ nslookup_update_math_stack
          move.l   #'0.0X',6(a6,a1.l)
          moveq    #1,d4          ; Return a string
          moveq    #0,d0          ; No errors
+exit_unlink
          unlk     a5
-         rts
-exit_close_sck_update_RIP
-         move.l   d0,-(a7)                   ; Save error value
-         movea.l  NSL_SCK_CHANNEL(a5),a0
-         bsr      close_sck_channel
-         move.l   (a7)+,d0
-         move.w   NSL_W_NAMELEN(a5),d2       ; Load length of string
-exit_update_RIP
-; Entered with length of string in d2
-         btst     #0,d2
-         beq      exit_update_math_stack
-         addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
-exit_update_math_stack
-         addq.b   #2,d2          ; Add 2 to account for the string length word on the stack
-         add.l    d2,BV_RIP(a6)
-exit_with_error
-; Error code should be in d0
          rts
 ;
 open_channel
