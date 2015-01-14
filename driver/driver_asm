@@ -222,6 +222,11 @@ allocate_struct_hostent_buffer
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
          beq      copy_hostname_to_temp_buffer
+; struct hostent allocation failed, clean up and exit
+; Unallocate temp hostname buffer
+         movea.l  NSL_NAMEBUFPTR(a5),a0
+         movea.l  NSL_DRVLBPTR(a5),a1
+         bsr      deallocate_user_heap
          unlk     a5
          move.b   #ERR_OM,d0
          bra      exit_update_RIP
