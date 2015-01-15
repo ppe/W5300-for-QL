@@ -386,6 +386,8 @@ hostent_init_set_haddrlist
          move.l   d1,STRUCT_HE_HADDRLIST(a2)
          movea.l  d1,a3
          move.l   #0,(a3)
+         move.l   #AF_INET,STRUCT_HE_HADDRTYPE(a2)       ; Only IPv4 supported so this is fixed
+         move.l   #AF_INET_ADDR_LEN,STRUCT_HE_HLEN(a2)   ; Number of bytes per address (==4)
          rts
 ; Copy at most n bytes from one string to another
 ; Always terminates the target with a null byte so can use n+1 bytes of target buffer

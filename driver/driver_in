@@ -2,6 +2,8 @@ ERR_OM               equ      -3          ; Out of memory
 ERR_NF               equ      -7          ; Not found
 ERR_BP               equ      -15         ; Bad parameter
 BV_RIP               equ      $58         ; Offset to maths stack address store in basic variables
+AF_INET              equ      2           ; Address family INET in netdb operations
+AF_INET_ADDR_LEN     equ      4           ; # of bytes per address in AF_INET family
 HEAP_SIZE            equ      $1000       ; 4k total memory for the driver
 USER_HEAP_SIZE       equ      $800        ; Number of bytes reserved for user heap inside driver heap block
 DNS_MAX_NAME_LEN     equ      254         ; 255 octets DNS label encoded '3www9microsoft3com0', with a possible trailing '.' root domain
