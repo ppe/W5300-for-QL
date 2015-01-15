@@ -358,9 +358,77 @@ driver_info
 ;    D0 = result
 ;
 ip_gethostbyname_impl
-         nop
+; TODO implement. For now just a fake implementation that copies the name to struct hostent and adds two static addresses
+         bsr      hostent_init
+         move.l   #$0a010101,d0
+         bsr      hostent_add_ip
+         move.l   #$0a020202,d0
+         bsr      hostent_add_ip
          moveq    #0,d0
          rts
+; Initialize a struct hostent with a host name passed in
+; Parameters:
+;     A1: pointer to null-terminated host name string
+;     A2: pointer to struct hostent
+hostent_init
+         lea      STRUCT_HE_SIZE(a2),a3
+         move.l   a3,STRUCT_HE_HNAME(a2)
+         move.l   a2,-(a7)
+         movea.l  a3,a2
+         move.w   #DNS_MAX_NAME_LEN,d0
+         bsr      strncpy
+         move.l   a2,d1                         ; On return, A2 points at one byte past the string terminating null byte
+         move.l   (a7)+,a2                      ; Restore pointer to struct hostent
+         btst     #0,d1
+         beq      hostent_init_set_haddrlist
+         addq.l   #1,d1
+hostent_init_set_haddrlist
+         move.l   d1,STRUCT_HE_HADDRLIST(a2)
+         movea.l  d1,a3
+         move.l   #0,(a3)
+         rts
+; Copy at most n bytes from one string to another
+; Always terminates the target with a null byte so can use n+1 bytes of target buffer
+; Parameters:
+;     A1: pointer to null-terminated string to copy from
+;     A2: pointer to pre-allocated buffer to copy to
+;     D0.w: maximum number of bytes to copy (excluding terminating null byte)
+; Returns:
+;     D0.w  number of bytes copied (excluding terminating null)
+strncpy
+         cmp.w    #0,d0
+         bhi      strncpy_maxlen_ok
+         move.b   #0,(a2)+
+         rts
+strncpy_maxlen_ok
+         move.w   #0,d2
+         subq.w   #1,d0       ; Subtract one to make correct # of loops using dbra
+strncpy_copy_loop
+         addq.w   #1,d2
+         move.b   (a1)+,d1
+         move.b   d1,(a2)+
+         beq      strncpy_string_end
+         dbra     d0,strncpy_copy_loop
+         move.b   #0,(a2)+
+strncpy_string_end
+         move.w   d2,d0
+         rts
+; Add an ip address to a struct hostent
+; PREREQUISITE: struct hostent has been initialized so that the ip address list pointer is valid
+; Parameters:
+;     A2: pointer to a struct hostent buffer with sufficient space
+;     D0.l ip address to add
+hostent_add_ip
+         movea.l  STRUCT_HE_HADDRLIST(a2),a3
+hostent_find_iplist_end
+         move.l   (a3)+,d1
+         bne      hostent_find_iplist_end
+         move.l   d0,-4(a3)
+         clr.l    (a3)
+         rts
+; Set official hostname in struct hostent
+hostent_set_hostname
+
 ; Insert W5300 code
 ;         in       mdv3_w5300_asm
 ; Insert driver name parser
