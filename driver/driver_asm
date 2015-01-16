@@ -335,6 +335,8 @@ channel_IO
          beq      driver_info
          cmpi.b   #IP_GETHOSTBYNAME,d0
          beq      ip_gethostbyname_impl
+         cmpi.b   #IP_INET_NTOA,d0
+         beq      ip_inet_ntoa_impl
          moveq    #0,d0
          rts
 driver_info
@@ -428,9 +430,39 @@ hostent_find_iplist_end
          move.l   d0,-4(a3)
          clr.l    (a3)
          rts
-; Set official hostname in struct hostent
-hostent_set_hostname
+;
+;IP_INET_NTOA
+;
+;Provides inet_ntoa(2) functionality
+;
+;   Input
+;
+;   D0 = IP_INET_NTOA
+;   D3 = (short) timeout (-1)
+;   A0 = (chanid_t) channel ID
+;   A1 = (struct in_addr *) net address buffer
+;   A2 = (char *) result buffer
+;
+;   Output
+;
+;   D0 = result
+ip_inet_ntoa_impl
+         nop
+         rts
 
+; byte-to-ascii
+; D0 = byte
+; A0 = pointer to buffer
+byte_to_ascii
+         move.b   d0,d1
+         divu     #100,d1
+         tst.b    #0,d1
+         beq      byte_to_ascii_tens
+         add.b    #$30,d1
+         move.b   d1,d2
+         lsl.w    #8,d2
+byte_to_ascii_tens
+         rts
 ; Insert W5300 code
 ;         in       mdv3_w5300_asm
 ; Insert driver name parser
