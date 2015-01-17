@@ -252,14 +252,61 @@ nslookup_name_copy_loop
          move.b   #0,(a4)
 ; Call gethostbyname
          moveq    #IP_GETHOSTBYNAME,d0
-         moveq    #-1,d3                  ; Timeout, -1 == wait for as long as it takes
+         moveq    #50,d3                  ; Timeout, -1 == wait for as long as it takes
          movea.l  NSL_SCK_CHANNEL(a5),a0
          movea.l  NSL_NAMEBUFPTR(a5),a1
          adda.l   #8,a1                      ; Skip over heap block book keeping info
          movea.l  NSL_STRUCT_HE_BUF(a5),a2
          adda.l   #8,a2                      ; Skip over heap block book keeping info
          trap     #3
-         move.b   #0,-(a7)
+         move.b   d0,-(a7)                   ; Save exit status
+         bne      nslookup_exit_deallocate
+; Call succeeded, 
+; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
+         clr.l    d2
+         move.w   NSL_W_NAMELEN(a5),d2
+         btst     #0,d2
+         beq      nslookup_update_math_stack
+         addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
+nslookup_update_math_stack
+         addq.b   #2,d2          ; Account for the string length word on the stack
+         add.l    d2,BV_RIP(a6)
+         lea      NSL_IP_STRING_BUF(a5),a2
+; Call inet_ntoa to get a (C-style null-terminated) ascii version of ip address, use math stack as result buffer
+         moveq    #IP_INET_NTOA,d0
+         moveq    #0,d3                  ; Timeout, -1 == wait for as long as it takes
+         movea.l  NSL_SCK_CHANNEL(a5),a0
+         movea.l  NSL_STRUCT_HE_BUF(a5),a3
+         movea.l  STRUCT_HE_HADDRLIST+8(a3),a1    ; Pointer to first ip address in return struct
+         trap     #3
+         lea      NSL_IP_STRING_BUF(a5),a0
+         bsr      strlen
+         moveq    #0,d1
+         move.w   d0,d1
+         move.w   d0,d4          ; Save original
+         btst     #0,d1
+         beq      ipstrlen_even
+         addq.l   #1,d1
+ipstrlen_even
+         addq.l   #2,d1          ; Space for length word
+         move.l   BV_RIP(a6),a1
+         move.w   BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack, d1==required bytes
+         jsr      (a4)           ; No error status is returned on QDOS!
+         move.l   BV_RIP(a6),a1  ; Load maths stack head pointer
+         suba.l   d1,a1
+         move.l   a1,BV_RIP(a6)
+         move.w   d4,0(a6,a1.l)
+         addq.l   #2,a1
+         subq.l   #2,d1   
+         lea      NSL_IP_STRING_BUF(a5),a0
+nslookup_ip_string_copy_loop
+         move.w   (a0)+,d0
+         move.w   d0,0(a6,a1.l)
+         addq.l   #2,a1
+         subq.l   #2,d1
+         tst.l    d1
+         bne      nslookup_ip_string_copy_loop
+nslookup_exit_deallocate
 ; Deallocate space reserved on the user heap
          movea.l  NSL_STRUCT_HE_BUF(a5),a0
          movea.l  NSL_DRVLBPTR(a5),a1
@@ -271,30 +318,14 @@ exit_unallocate_name_buf_close_sck
 exit_close_sck
          movea.l  NSL_SCK_CHANNEL(a5),a0
          bsr      close_sck_channel
+exit_pop_and_unlink
          clr.l    d0
          move.b   (a7)+,d0
-         bne      exit_unlink    ; When return status is != 0, math stack will be cleaned automatically
-; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
-         clr.l    d2
-         move.w   NSL_W_NAMELEN(a5),d2
-         btst     #0,d2
-         beq      nslookup_update_math_stack
-         addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
-nslookup_update_math_stack
-         addq.b   #2,d2          ; Account for the string length word on the stack
-         add.l    d2,BV_RIP(a6)
-         moveq    #10,d1         ; Number of bytes on the maths stack needed for the return value
-         move.w   BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack
-         jsr      (a4)           ; No error status is returned on QDOS!
-         move.l   BV_RIP(a6),a1  ; Load maths stack head pointer
-         suba.l   #10,a1          ; Move the top of maths stack by length of string + length word
-         move.l   a1,BV_RIP(a6)  ; Save the updated BV_RIP pointer to tell QDOS where to pick up the return value
-         move.w   #7,0(a6,a1.l)  ; Length of return string
-         move.l   #'0.0.',2(a6,a1.l)
-         move.l   #'0.0X',6(a6,a1.l)
-         moveq    #1,d4          ; Return a string
-         moveq    #0,d0          ; No errors
+         bne      exit_unlink
+         moveq    #1,d4                         ; Return a string
 exit_unlink
+         ext.w    d0
+         ext.l    d0
          unlk     a5
          rts
 ;
@@ -417,6 +448,19 @@ strncpy_copy_loop
 strncpy_string_end
          move.w   d2,d0
          rts
+; Strlen - return number of characters in a c-style null-terminated string
+; A0: pointer to start of string
+; Returns:
+; D0.w: length of string
+strlen
+         moveq    #0,d0
+strlen_loop
+         move.b   (a0)+,d1
+         beq      strlen_exit
+         addq.w   #1,d0
+         bra      strlen_loop
+strlen_exit
+         rts
 ; Add an ip address to a struct hostent
 ; PREREQUISITE: struct hostent has been initialized so that the ip address list pointer is valid
 ; Parameters:
@@ -464,6 +508,7 @@ long_to_ip_string
          move.b  #'.',(a0)+
          rol.l   #8,d0
          bsr     byte_to_string
+         move.b  #0,(a0)+
          rts
 byte_to_string
          moveq   #0,d1
