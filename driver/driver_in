@@ -9,8 +9,11 @@ HEAP_SIZE            equ      $2000       ; 8k total memory for the driver
 USER_HEAP_SIZE       equ      $1800       ; Number of bytes reserved for user heap inside driver heap block
 DNS_MAX_NAME_LEN     equ      254         ; 255 octets DNS label encoded '3www9microsoft3com0', with a possible trailing '.' root domain
 IP_MAX_STRINGLEN     equ      16          ; Max length of null-terminated ip address string '100.100.100.100\0'
+; Netdb functions: d0 values for trap #3 calls
 IP_GETHOSTBYNAME     equ      $5E
+IP_INET_ATON         equ      $72
 IP_INET_NTOA         equ      $75
+; End netdb functions
 QE_IO_DRV_INFO       equ      $7E
 QE_MEM_UH_PTR        equ      $28         ; Long word pointer to user heap base address (needed for QDOS user heap MT_ALLOC calls)
 QE_MEM_HOSTNAME      equ      $100        ; Offset for buffer to contain a DNS hostname, maximum length of DNS hostname is 255 octets

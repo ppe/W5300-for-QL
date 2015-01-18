@@ -367,6 +367,8 @@ channel_IO
          beq      driver_info
          cmpi.b   #IP_GETHOSTBYNAME,d0
          beq      ip_gethostbyname_impl
+         cmpi.b   #IP_INET_ATON,d0
+         beq      ip_inet_aton_impl
          cmpi.b   #IP_INET_NTOA,d0
          beq      ip_inet_ntoa_impl
          moveq    #0,d0
@@ -474,6 +476,26 @@ hostent_find_iplist_end
          bne      hostent_find_iplist_end
          move.l   d0,-4(a3)
          clr.l    (a3)
+         rts
+;
+; IP_INET_ATON
+;
+; Provides inet_aton(2) functionality
+;
+;    Input
+;
+;         D0 = IP_INET_ATON;
+;         D3 = (short) timeout (-1)
+;    A0 = (chanid_t) channel ID
+;         A1 = (char *) name
+;         A2 = ( struct in_addr *)inaddr buffer
+;
+;    Output
+;
+;    D0 = result
+;
+ip_inet_aton_impl
+         moveq    #0,d0
          rts
 ;
 ;IP_INET_NTOA
