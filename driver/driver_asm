@@ -395,6 +395,8 @@ driver_info
 ;
 ip_gethostbyname_impl
 ; TODO implement. For now just a fake implementation that copies the name to struct hostent and adds two static addresses
+         bsr      ip_inet_aton_impl
+; TODO check return value and if succesful, build a valid hostent reply
          bsr      hostent_init
          move.l   #$0a010101,d0
          bsr      hostent_add_ip
@@ -495,7 +497,13 @@ hostent_find_iplist_end
 ;    D0 = result
 ;
 ip_inet_aton_impl
-         moveq    #0,d0
+         move.l   a0,-(a7)             ; Save channel id
+         movea.l  a1,a0
+         bsr      strlen               ; Get string length in d0, a0 = pointer to string
+         moveq    #0,d4
+         move.w   d0,d4
+         bsr      read_ip_address
+         movea.l  (a7)+,a0
          rts
 ;
 ;IP_INET_NTOA
@@ -563,8 +571,8 @@ byte_to_string_handle_ones
          rts
 ; Insert W5300 code
 ;         in       mdv3_w5300_asm
-; Insert driver name parser
-;         in       dev1_parser_asm
+; Insert parser utility functions
+         in       dev1_parser_asm
 KEYWORDS dc.w     2             ; No of procedures we are linking in
          dc.w     QE_UNLOAD-*   ; Pointer to code of first procedure
          dc.b     9,'QE_UNLOAD' ; Name of first procedure

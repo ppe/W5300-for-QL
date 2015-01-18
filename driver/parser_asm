@@ -3,6 +3,7 @@
 ; a2 points to string passed to driver in open call, e.g. "udp_127.0.0.1:80" preceded
 ; by a length word
 match_udp_drv_name
+         rts
 ; deleted...
 isnum    moveq    #1,d0
          cmpi.b   #$30,d1
@@ -73,6 +74,8 @@ read_ip_loop
          dbf      d6,read_ip_loop
          bsr      read_byte_and_update_regs
          tst.b    d0
+         bne      not_ip
+         cmpi.b   #0,(a1)+                            ; Last byte should be a terminating null
          bne      not_ip
          rts
 not_ip   moveq    #-1,d0
