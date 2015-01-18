@@ -289,22 +289,23 @@ nslookup_update_math_stack
          addq.l   #1,d1
 ipstrlen_even
          addq.l   #2,d1          ; Space for length word
+         move.l   d1,d5          ; Save stack allocation length, d1 is corrupted (on Minerva) when calling BV_CHRIX
          move.l   BV_RIP(a6),a1
          move.w   BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack, d1==required bytes
          jsr      (a4)           ; No error status is returned on QDOS!
          move.l   BV_RIP(a6),a1  ; Load maths stack head pointer
-         suba.l   d1,a1
+         suba.l   d5,a1
          move.l   a1,BV_RIP(a6)
          move.w   d4,0(a6,a1.l)
          addq.l   #2,a1
-         subq.l   #2,d1   
+         subq.l   #2,d5
          lea      NSL_IP_STRING_BUF(a5),a0
 nslookup_ip_string_copy_loop
          move.w   (a0)+,d0
          move.w   d0,0(a6,a1.l)
          addq.l   #2,a1
-         subq.l   #2,d1
-         tst.l    d1
+         subq.l   #2,d5
+         tst.l    d5
          bne      nslookup_ip_string_copy_loop
 nslookup_exit_deallocate
 ; Deallocate space reserved on the user heap
