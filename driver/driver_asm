@@ -394,9 +394,19 @@ driver_info
 ;    D0 = result
 ;
 ip_gethostbyname_impl
+         movem.l  a1-a2,-(a7)
+         lea      STRUCT_HE_HADDRLIST(a2),a2
+         bsr      ip_inet_aton_impl                ; Returns ip address in d7 if successful
+         movem.l  (a7)+,a1-a2
+         tst.b    d0
+         bne      lookup_hostname
+         bsr      hostent_init
+         move.l   d7,d0
+         bsr      hostent_add_ip
+         moveq    #0,d0
+         rts
 ; TODO implement. For now just a fake implementation that copies the name to struct hostent and adds two static addresses
-         bsr      ip_inet_aton_impl
-; TODO check return value and if succesful, build a valid hostent reply
+lookup_hostname
          bsr      hostent_init
          move.l   #$0a010101,d0
          bsr      hostent_add_ip
