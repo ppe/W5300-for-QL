@@ -394,24 +394,34 @@ driver_info
 ;    D0 = result
 ;
 ip_gethostbyname_impl
-         movem.l  a1-a2,-(a7)
+         move.l   a0,-(a7)
+         movem.l  a1-a3,-(a7)
          lea      STRUCT_HE_HADDRLIST(a2),a2
          bsr      ip_inet_aton_impl                ; Returns ip address in d7 if successful
-         movem.l  (a7)+,a1-a2
+         movem.l  (a7)+,a1-a3
          tst.b    d0
          bne      lookup_hostname
          bsr      hostent_init
          move.l   d7,d0
          bsr      hostent_add_ip
+         movea.l  (a7)+,a0
          moveq    #0,d0
          rts
 ; TODO implement. For now just a fake implementation that copies the name to struct hostent and adds two static addresses
 lookup_hostname
+         moveq    #$0c,d0
+         moveq    #$a,d1
+         lea      QE_MEM_UH_PTR(a3),a0
+         suba.l   a6,a0
+         movem.l  a1-a2,-(a7)
+         trap     #1
+         movem.l  (a7)+,a1-a2
          bsr      hostent_init
          move.l   #$0a010101,d0
          bsr      hostent_add_ip
          move.l   #$0a020202,d0
          bsr      hostent_add_ip
+         movea.l  (a7)+,a0
          moveq    #0,d0
          rts
 ; Initialize a struct hostent with a host name passed in
