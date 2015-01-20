@@ -1,0 +1,184 @@
+; create_dns_query_buffer
+; Parameters
+;        d0=length of string pointed to by a4
+;        a1=user heap free space handle
+;        a4=pointer to (C-style) string representing address to resolve
+; Returns:
+;        d0 = status code, 0 == ok, -1 == error
+;        d5 = total length of formatted DNS query
+;        a2 = pointer to buffer containing the formatted DNS query
+;
+dns_qhl  equ      12                ; DNS header length is 12 bytes
+dns_qqt  equ      4                 ; Four bytes at end of a query question
+TYPE_A   equ      1
+CLASS_IN equ      1
+; Calculate the number of bytes required for the dns query message including trailing and leading byte of message string null and dns header
+; and query record trailer
+create_dns_query_buffer
+         moveq    #0,d1
+         move.w   d0,d1
+         move.w   d0,d6                               ; Save length of string
+         add.w    #dns_qhl+dns_qqt+2+8,d1               ; Two extra bytes for 'label' -> '0x05label0x00', +8 for user heap header block
+         move.w   d1,d5                               ; Save total length in d5 where it will be returned to caller
+         bsr      allocate_user_heap
+         tst.l    d0
+         bne      alloc_fail                          ; Got less than the requested # of bytes
+; a0 now points to allocated buffer area and a1 still points to start of address to resolve
+         adda.l   #8,a0                               ; Skip over user heap header info
+         movea.l  a0,a2                               ; a2 used as base address for copying into
+insert_trailer
+         move.w   d6,d1                               ; Length of string that was passed in
+         lea      dns_qhl(a2),a3
+         bsr      address_to_query_format
+         bne      alloc_fail_release                  ; If conversion failed then release memory and exit with error
+; N.B. query name is not necessarily word-aligned so we can't use word sized operations in the following
+         move.b   #0,(a3)+
+         move.b   #TYPE_A,(a3)+                       ; query for A records
+         move.b   #0,(a3)+
+         move.b   #CLASS_IN,(a3)+                     ; Class Internet
+fill_header
+         move.w   #0,(a2)                             ; Id for query. TODO: fill in ID of current job
+         move.w   #1,4(a2)                            ; Number of questions
+         move.w   #0,6(a2)                            ; Number of answers
+         move.w   #0,8(a2)                            ; Number of authority resource records
+         move.w   #0,10(a2)                           ; Number of additional resource records
+set_header_flags
+         move.w   #0,2(a2)                            ; Reset all flags
+         bset     #0,2(a2)                            ; Recursion desired
+         moveq    #0,d0
+         rts
+; Convert an address to the DNS question format
+; E.g. news.lekane.com is converted to 0x04news0x06lekane0x03com0x00 (0xNN a single byte with hex value NN)
+; Parameters
+; a3 should point to beginning of buffer where the converted address should be written to
+; N.B: at least one byte of space should be available for the case when the address in question is '.'
+; a4 points to start of string to be converted
+; d1.w contains length of string to be converted
+; Returns:
+; d0=0 means conversion succeeded
+; d0=1 means the string to be converted was empty, target buffer is not written to
+; d0=2 means string to be converted was an illegal dns name, e.g. ".."
+address_to_query_format
+         tst.w    d1
+         beq      convert_empty_string
+         cmpi.w   #255,d1                             ; Maximum total length of name is 255 bytes says the RFC
+         bhi      convert_name_too_long
+         move.w   d1,d4
+         subq.w   #1,d1                               ; Set up for dbra loop which runs until d1==-1
+         movea.l  a4,a1
+         moveq    #0,d3                               ; d3 == length of current label (== part of dns address)
+cloop
+         move.b   (a4)+,d2
+         cmpi.b   #'.',d2
+         beq      cloop_end_label
+         addq.w   #1,d3
+         dbra     d1,cloop
+         bra      clabel_write_label
+cloop_end_label
+         cmpi.w   #0,d1                               ; Is this the last character of the address?
+         bne      cloop_test_illegal                  ; If not, test for illegal label preceding this label terminator
+         cmpi.w   #1,d4                               ; It is last char: was the original length of address == 1
+         beq      convert_add_null_terminator         ; Then we have address '.' which is a valid query, add null and terminate
+cloop_test_illegal
+         tst.w    d3                                  ; Check if current label is empty
+         beq      convert_illegal_label               ; '..' in an address is illegal
+         cmpi.w   #63,d3
+         bhi      convert_illegal_label               ; Max length of a single label is 63 bytes (RFC 1035)
+clabel_write_label
+         move.b   d3,(a3)+                            ; Write label length to target
+         subq.w   #1,d3
+clabel_loop
+         move.b   (a1)+,(a3)+
+         dbra     d3,clabel_loop
+         moveq    #0,d3                               ; Reset label length to zero, i.e. begin new label
+         tst.w    d1
+         blt      convert_add_null_terminator         ; This was the last label in the address without an ending '.'
+         adda.l   #1,a1                               ; Skip over the '.' in source string
+         dbra     d1,cloop
+convert_add_null_terminator
+         move.b   #0,(a3)+
+         moveq    #0,d0
+         rts
+convert_empty_string
+         moveq    #1,d0
+         rts
+convert_illegal_label
+         moveq    #2,d0
+         rts
+convert_name_too_long
+         moveq    #3,d0
+         rts
+; Allocation returned less bytes than we need - release the allocated block
+alloc_fail_release
+         bsr      deallocate_user_heap                ; a0=pointer to heap block, a1=user heap free space handle
+alloc_fail
+         moveq    #-1,d0
+         rts
+; Get an IP address from a UDP response packet
+; Parameter: a3 points to start of response packet which MUST be aligned on a word boundary
+get_ip_from_dns_response
+         move.b   3(a3),d0
+         andi.b   #$0F,d0                             ; Check the response code, should be 0 for no error
+         bne      response_error
+         move.w   4(a3),d2                            ; Number of questions
+         move.w   6(a3),d3                            ; Number of answers in response
+         beq      response_no_answers
+         adda.l   #dns_qhl,a3                          ; Skip over the header and start reading answers
+; while(questions>0)
+         bra      skip_questions_end_test
+skip_over_questions
+         bsr      skip_over_name
+         adda.l   #4,a3                               ; Skip over QTYPE and QCLASS in question
+skip_questions_end_test
+         dbra     d2,skip_over_questions
+; end while
+read_answers_until_A_record_found
+         bsr      skip_over_name
+; Type of resource
+         MWORD    a3,d1
+         cmpi.w   #TYPE_A,d1                          ; Looking for an A record
+         bne      next_answer
+; Class of resource
+         MWORD    a3,d1
+         cmpi.w   #CLASS_IN,d1                        ; Should be "internet"
+         bne      next_answer
+         adda.l   #4,a3                               ; Skip over TTL. TODO: pick this up and use it
+; Length of resource data, should be 4 octets for an IPv4 address
+         MWORD    a3,d1
+         cmpi.w   #4,d1
+         bne      next_answer
+         MWORD    a3,d1
+         swap     d1
+         MWORD    a3,d1
+         moveq    #0,d0
+         rts
+next_answer
+         dbra     d3,read_answers_until_A_record_found
+response_no_answers
+         moveq    #-1,d0
+response_error
+         rts
+;
+; Skip over name in DNS format also taking into account the compression scheme in RFC 1035 ch. 4.1.4
+; Parameters: a3, pointer to start of name, on exit will point to octet immediately following the name
+;
+skip_over_name
+         move.b   (a3)+,d0
+         beq      skip_done
+         cmpi.b   #63,d0
+         bhi      skip_compression
+         adda.l   d0,a3
+         bra      skip_over_name
+skip_done
+         rts
+skip_compression
+         move.b   d0,d1
+         andi.b   #$C0,d1
+         cmpi.b   #$C0,d1
+         bne      unknown_compression
+         adda.l   #1,a3
+         moveq    #0,d0
+         rts
+unknown_compression
+         moveq    #-1,d0
+         rts

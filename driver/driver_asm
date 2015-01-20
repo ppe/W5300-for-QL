@@ -1,3 +1,4 @@
+         in       dev1_resolv_macros_asm
          in       dev1_driver_in
 ; Get QDOS info to get sysvars address in a0
          moveq    #0,d0
@@ -85,7 +86,7 @@ get_driver_info_exit
 ; Allocate user heap
 ; Parameters:
 ; d1 : number of bytes required
-; a1 : pointer to start of driver linkage block
+; a0 : user heap free space handle
 ; Returns:
 ; a0 : pointer to allocated heap block
 ; d0 : error code (0 == no error)
@@ -93,7 +94,6 @@ get_driver_info_exit
 ; A0-A3, D0-D3
 allocate_user_heap
          moveq    #MT_ALLOC,d0         ; Trap code
-         lea      QE_MEM_UH_PTR(a1),a0 ; pointer to pointer to user heap
          suba.l   a6,a0                ; Make the pointer relative to A6
          trap     #1
          tst.l    d0                   ; Did it work ?
@@ -106,7 +106,7 @@ user_heap_alloc_ok
 ; Deallocate user heap
 ; Parameters:
 ; a0 : pointer to start of allocated block (starting with the long word containing block size)
-; a1 : pointer to start of driver linkage block
+; a1 : user heap free space handle
 ; Returns:
 ; nothing, LNKFR does not report errors!
 ; Corrupts:
@@ -115,8 +115,7 @@ deallocate_user_heap
          moveq    #MT_LNKFR,d0            ; Trap code
          move.l   0(a0),d1                ; Size of block to be released
          suba.l   a6,a0                   ; A0 has to be relative a6
-         lea      QE_MEM_UH_PTR(a1),a1
-         suba.l   a6,a1                   ; Which has also to be relative A6
+         suba.l   a6,a1                   ; Free space handle also has to be relative A6
          trap     #1                      ; Deallocate the 200 byte area
          rts
 QE_UNLOAD
@@ -215,6 +214,8 @@ nslookup_driver_info_ok
          move.w   NSL_W_NAMELEN(a5),d1       ; Length of string from stack
          addq.w   #1,d1                      ; Add one for the terminating null that will be appended
          addq.w   #8,d1                      ; Add user heap block book keeping overhead
+         movea.l  NSL_DRVLBPTR(a5),a1
+         lea      QE_MEM_UH_PTR(a1),a0
          bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
@@ -226,6 +227,7 @@ allocate_struct_hostent_buffer
          move.w   #STRUCT_HE_SIZE+HOSTENT_BUF_SIZE,d1          ; Size of temporary struct bufent and associated data
          addq.w   #8,d1                                        ; Add user heap block book keeping overhead
          movea.l  NSL_DRVLBPTR(a5),a1                          ; Pointer go start of linkage block
+         lea      QE_MEM_UH_PTR(a1),a0
          bsr      allocate_user_heap                           ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
@@ -311,10 +313,12 @@ nslookup_exit_deallocate
 ; Deallocate space reserved on the user heap
          movea.l  NSL_STRUCT_HE_BUF(a5),a0
          movea.l  NSL_DRVLBPTR(a5),a1
+         lea      QE_MEM_UH_PTR(a1),a1
          bsr      deallocate_user_heap
 exit_unallocate_name_buf_close_sck
          movea.l  NSL_NAMEBUFPTR(a5),a0
          movea.l  NSL_DRVLBPTR(a5),a1
+         lea      QE_MEM_UH_PTR(a1),a1
          bsr      deallocate_user_heap
 exit_close_sck
          movea.l  NSL_SCK_CHANNEL(a5),a0
@@ -409,13 +413,25 @@ ip_gethostbyname_impl
          rts
 ; TODO implement. For now just a fake implementation that copies the name to struct hostent and adds two static addresses
 lookup_hostname
-         moveq    #$0c,d0
-         moveq    #$a,d1
+         movem.l  a1-a3,-(a7)
+; Create and fill in a DNS query packet. For now, release it after creating it
+         move.l   a1,a0
+         bsr      strlen
+         movea.l  a1,a4
          lea      QE_MEM_UH_PTR(a3),a0
-         suba.l   a6,a0
-         movem.l  a1-a2,-(a7)
-         trap     #1
-         movem.l  (a7)+,a1-a2
+         bsr      create_dns_query_buffer
+         movea.l  a2,a4                      ; Save pointer to buffer
+         movem.l  (a7)+,a1-a3
+         tst.b    d0
+         bne      create_dummy_response
+; Release the DNS query heap block
+         movem.l  a1-a3,-(a7)
+         movea.l  a4,a0
+         suba.l   #8,a0                      ; Point to beginning of allocated user heap block
+         lea      QE_MEM_UH_PTR(a3),a1
+         bsr      deallocate_user_heap
+         movem.l  (a7)+,a1-a3
+create_dummy_response
          bsr      hostent_init
          move.l   #$0a010101,d0
          bsr      hostent_add_ip
@@ -593,6 +609,7 @@ byte_to_string_handle_ones
 ;         in       mdv3_w5300_asm
 ; Insert parser utility functions
          in       dev1_parser_asm
+         in       dev1_resolv_asm
 KEYWORDS dc.w     2             ; No of procedures we are linking in
          dc.w     QE_UNLOAD-*   ; Pointer to code of first procedure
          dc.b     9,'QE_UNLOAD' ; Name of first procedure
