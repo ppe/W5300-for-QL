@@ -432,6 +432,10 @@ lookup_hostname
          bsr      deallocate_user_heap
          movem.l  (a7)+,a1-a3
 create_dummy_response
+         move.l   a3,-(a7)
+         lea      DNS_DUMMY_RESPONSE,a3
+         bsr      get_ip_from_dns_response
+         movea.l  (a7)+,a3
          bsr      hostent_init
          move.l   #$0a010101,d0
          bsr      hostent_add_ip
@@ -618,3 +622,12 @@ KEYWORDS dc.w     2             ; No of procedures we are linking in
          dc.w     NSLOOKUP-*    ; Pointer to code of first function
          dc.b     9,'NSLOOKUP$' ; Name of first function
          dc.w     0             ; End marker for functions
+; Wireshark capture of DNS query response to www.lekane.net
+DNS_DUMMY_RESPONSE
+         dc.l     $00068180,$00010005,$00000000,$03777777,$066c656b,$616e6503,$6e657400,$00010001
+         dc.l     $c00c0005,$00010000,$012b0015,$1270726f,$642d6575,$77312d64,$69616c6f,$677565c0
+         dc.l     $10c02c00,$05000100,$00003b00,$0e0b7061,$62303230,$2d657577,$31c010c0,$4d000500
+         dc.l     $01000001,$2b003416,$70616230,$32302d65,$7577312d,$32303732,$38343839,$36310965
+         dc.l     $752d7765,$73742d31,$03656c62,$09616d61,$7a6f6e61,$77730363,$6f6d00c0,$67000100
+         dc.l     $01000000,$3b000436,$f6c85fc0,$67000100,$01000000,$3b000436
+         dc.b     $ab,$e1,$bf
