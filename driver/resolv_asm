@@ -141,18 +141,26 @@ read_answers_until_A_record_found
 ; Class of resource
          MWORD    a3,d1
          cmpi.w   #CLASS_IN,d1                        ; Should be "internet"
-         bne      next_answer
+         bne      next_answer_from_ttl
          adda.l   #4,a3                               ; Skip over TTL. TODO: pick this up and use it
 ; Length of resource data, should be 4 octets for an IPv4 address
          MWORD    a3,d1
          cmpi.w   #4,d1
-         bne      next_answer
+         bne      next_answer_from_res
          MWORD    a3,d1
          swap     d1
          MWORD    a3,d1
          moveq    #0,d0
          rts
 next_answer
+         ; skip class (2 octets)
+         adda.l   #2,a3
+next_skip_from_ttl
+         ; skip TTL (4 octets)
+         adda.l   #4,a3
+next_answer_from_res
+         MWORD    a3,d1                               ; Read resource length
+         adda.l   d1,a3                               ; Skip over resource
          dbra     d3,read_answers_until_A_record_found
 response_no_answers
          moveq    #-1,d0
