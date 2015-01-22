@@ -437,10 +437,14 @@ create_dummy_response
          lea      DNS_DUMMY_RESPONSE,a3
          bsr      get_ip_from_dns_response
          movem.l  (a7)+,a1-a3
+         tst.b    d0
+         bne      add_dummy_ip
          move.l   d1,d0
+         bra      append_ip_to_hostent
+add_dummy_ip
+         move.l   #$0a010101,d0
+append_ip_to_hostent
          bsr      hostent_add_ip
-;         move.l   #$0a010101,d0
-;         bsr      hostent_add_ip
 ;         move.l   #$0a020202,d0
 ;         bsr      hostent_add_ip
          movea.l  (a7)+,a0

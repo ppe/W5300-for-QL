@@ -8,10 +8,11 @@
 ;        d5 = total length of formatted DNS query
 ;        a2 = pointer to buffer containing the formatted DNS query
 ;
-dns_qhl  equ      12                ; DNS header length is 12 bytes
-dns_qqt  equ      4                 ; Four bytes at end of a query question
-TYPE_A   equ      1
-CLASS_IN equ      1
+dns_qhl     equ      12                ; DNS header length is 12 bytes
+dns_qqt     equ      4                 ; Four bytes at end of a query question
+TYPE_A      equ      1
+TYPE_CNAME  equ      5
+CLASS_IN    equ      1
 ; Calculate the number of bytes required for the dns query message including trailing and leading byte of message string null and dns header
 ; and query record trailer
 create_dns_query_buffer
@@ -132,12 +133,27 @@ skip_over_questions
 skip_questions_end_test
          dbra     d2,skip_over_questions
 ; end while
+; Set up counters for A and CNAME resource records
+         moveq    #0,d4                               ; How many A records were found
+         moveq    #0,d5                               ; How many CNAME records were found
 read_answers_until_A_record_found
+         movea.l  a3,a1                               ; Store pointer to start of resource record
          bsr      skip_over_name
 ; Type of resource
          MWORD    a3,d1
          cmpi.w   #TYPE_A,d1                          ; Looking for an A record
+         bne      answers_check_if_cname
+         addq.w   #1,d4
+         move.w   #TYPE_A,-(a7)                       ; Push resource type
+         move.l   a1,-(a7)                            ; Push resource record pointer
+         bra      next_answer
+answers_check_if_cname
+         cmpi.w   #TYPE_CNAME,d1
          bne      next_answer
+         addq.w   #1,d5
+         move.w   #TYPE_CNAME,-(a7)                       ; Push resource type
+         move.l   a1,-(a7)                            ; Push resource record pointer
+         bra      next_answer
 ; Class of resource
          MWORD    a3,d1
          cmpi.w   #CLASS_IN,d1                        ; Should be "internet"
@@ -164,6 +180,10 @@ next_answer_from_res
          adda.w   d1,a3                               ; Skip over resource
          dbra     d3,read_answers_until_A_record_found
 response_no_answers
+; TODO, process stack. Now just clear it
+         add.w    d4,d5                               ; Total of A and CNAME records
+         mulu     #6,d5                               ; one word (resource type) and one long word (resource pointer) per entry
+         adda.l   d5,a7
          moveq    #-1,d0
 response_error
          rts
