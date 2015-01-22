@@ -161,7 +161,7 @@ next_answer_from_ttl
 next_answer_from_res
 ; Read resource length
          MWORD    a3,d1
-         adda.l   d1,a3                               ; Skip over resource
+         adda.w   d1,a3                               ; Skip over resource
          dbra     d3,read_answers_until_A_record_found
 response_no_answers
          moveq    #-1,d0
