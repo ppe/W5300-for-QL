@@ -116,14 +116,18 @@ alloc_fail
          moveq    #-1,d0
          rts
 ; Get an IP address from a UDP response packet
-; Parameter: a3 points to start of response packet which MUST be aligned on a word boundary
+; Parameters:
+;  a0 : pointer to struct hostent that will be filled with information from response
+;  a3 : pointer to start of response packet which MUST be aligned on a word boundary
+; 
 get_ip_from_dns_response
+         movea.l  a3,a4                               ; Save pointer to response in a4
          move.b   3(a3),d0
          andi.b   #$0F,d0                             ; Check the response code, should be 0 for no error
          bne      response_error
          move.w   4(a3),d2                            ; Number of questions
          move.w   6(a3),d3                            ; Number of answers in response
-         beq      response_no_answers
+         beq      response_process_stack
          adda.l   #dns_qhl,a3                          ; Skip over the header and start reading answers
 ; while(questions>0)
          bra      skip_questions_end_test
@@ -179,8 +183,26 @@ next_answer_from_res
          MWORD    a3,d1
          adda.w   d1,a3                               ; Skip over resource
          dbra     d3,read_answers_until_A_record_found
-response_no_answers
+response_process_stack
 ; TODO, process stack. Now just clear it
+; d4 = # A records
+; d5 = # CNAME records
+; a0 = pointer to struct hostent
+; a4 = pointer to response
+         moveq    #0,d1
+         lea      STRUCT_HE_HADDRLIST+4(a0),a1        ; First word after struct hostent...
+         move.l   a1,STRUCT_HE_HALIASES(a0)           ; ... is table of pointers to CNAMEs
+         move.w   d5,d1
+         lsl.l    #2,d1                               ; End of table marker goes at offset num_cnames*4 bytes from start of table
+         move.l   #0,(a1,d1.l)
+         addq.l   #4,d1                               ; Long word after cname table end is start of A pointer table
+         adda.l   d1,a1
+         move.l   a1,STRUCT_HE_HADDRLIST(a0)
+         move.w   d4,d1
+         lsl.l    #2,d1
+         move.l   #0,(a1,d1.l)                        ; Set end of table marker for A pointer table
+         addq.l   #4,d1
+         adda.l   d1,a1                               ; A1 now points to area after CNAME and A tables
          add.w    d4,d5                               ; Total of A and CNAME records
          mulu     #6,d5                               ; one word (resource type) and one long word (resource pointer) per entry
          adda.l   d5,a7

@@ -435,7 +435,8 @@ create_dummy_response
          bsr      hostent_init
          movem.l  a1-a3,-(a7)
          lea      DNS_DUMMY_RESPONSE,a3
-         bsr      get_ip_from_dns_response
+         movea.l  a2,a0                      ; a0 now points to struct hostent
+         bsr      get_ip_from_dns_response   ; WIP: Try to fill in hostent from dns response
          movem.l  (a7)+,a1-a3
          tst.b    d0
          bne      add_dummy_ip
