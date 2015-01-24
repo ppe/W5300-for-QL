@@ -121,6 +121,9 @@ alloc_fail
 ;  a3 : pointer to start of response packet which MUST be aligned on a word boundary
 ; 
 get_ip_from_dns_response
+; TODO remove this
+         move.l   #0,(a0)                               ; Erase pointer to host name in struct hostent
+; End TODO
          movea.l  a3,a4                               ; Save pointer to response in a4
          move.b   3(a3),d0
          andi.b   #$0F,d0                             ; Check the response code, should be 0 for no error
@@ -203,11 +206,68 @@ response_process_stack
          move.l   #0,(a1,d1.l)                        ; Set end of table marker for A pointer table
          addq.l   #4,d1
          adda.l   d1,a1                               ; A1 now points to area after CNAME and A tables
+         movea.l  a1,a5                               ; Save it in A5
          add.w    d4,d5                               ; Total of A and CNAME records
-         mulu     #6,d5                               ; one word (resource type) and one long word (resource pointer) per entry
-         adda.l   d5,a7
+         bra      resp_pop_end_check
+resp_pop_resource
+         move.l   (a7)+,a1
+         move.w   (a7)+,d1
+         cmpi.w   #TYPE_A,d1
+         bne      resp_pop_check_cname
+; copy name if not yet set in h_name of struct hostent
+         tst.l    (a0)                                  ; Is h_name set already set?
+         bne      copy_ip_to_hostent
+         movem.l  d0/a1-a2,-(a7)
+         movea.l  a5,a2                                  ; Target location
+; Already set earlier: a0 = struct hostent, a1 = pointer to start of name
+         bsr      copy_res_name
+         move.l   a5,(a0)
+         movea.l  a2,a5
+         movem.l  (a7)+,d0/a1-a2
+copy_ip_to_hostent
+         move.l   STRUCT_HE_HADDRLIST(a0),a2
+find_a_record_slot
+         tst.l    (a2)+
+         bne      find_a_record_slot
+; Save pointer to ip address in the first empty slot
+         move.l   a5,-(a2)
+; TODO now just insert dead beef as ip address
+         move.l   #$DEADBEEF,(a5)+
+resp_pop_check_cname
+         cmpi.w   #TYPE_CNAME,d1
+         bne      resp_pop_end_check
+resp_pop_end_check
+         dbra     d5,resp_pop_resource
          moveq    #-1,d0
 response_error
+         rts
+; Convert and copy name from dns response resource to target location and terminate it with null
+; Parameters:
+;     a1 : pointer to start of dns-format name
+;     a2 : pointer to target location
+;     a4 : pointer to dns response
+; Corrupts:
+;     a1,a2,d0
+copy_res_name
+         moveq    #0,d0
+         move.b   (a1)+,d0
+         beq      copy_res_name_done
+         cmpi.b   #$C0,d0
+         bne      copy_res_uncompressed
+; Deal with compression: next byte is an offset from id field of the response strcuture
+         move.b   (a1)+,d0
+         ext.w    d0
+         lea      0(a4,d0.w),a1
+         bra      copy_res_name
+copy_res_uncompressed
+         subq.b   #1,d0
+copy_res_name_loop
+         move.b   (a1)+,(a2)+
+         dbra     d0,copy_res_name_loop
+         move.b   #'.',(a2)+
+         bra      copy_res_name
+copy_res_name_done
+         move.b   #0,(a2)+
          rts
 ;
 ; Skip over name in DNS format also taking into account the compression scheme in RFC 1035 ch. 4.1.4
