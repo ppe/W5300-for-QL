@@ -143,7 +143,7 @@ skip_questions_end_test
 ; Set up counters for A and CNAME resource records
          moveq    #0,d4                               ; How many A records were found
          moveq    #0,d5                               ; How many CNAME records were found
-read_answers_until_A_record_found
+dns_response_scan_answers
          movea.l  a3,a1                               ; Store pointer to start of resource record
          bsr      skip_over_name
 ; Type of resource
@@ -161,20 +161,6 @@ answers_check_if_cname
          move.w   #TYPE_CNAME,-(a7)                       ; Push resource type
          move.l   a1,-(a7)                            ; Push resource record pointer
          bra      next_answer
-; Class of resource
-         MWORD    a3,d1
-         cmpi.w   #CLASS_IN,d1                        ; Should be "internet"
-         bne      next_answer_from_ttl
-         adda.l   #4,a3                               ; Skip over TTL. TODO: pick this up and use it
-; Length of resource data, should be 4 octets for an IPv4 address
-         MWORD    a3,d1
-         cmpi.w   #4,d1
-         bne      next_answer_from_res
-         MWORD    a3,d1
-         swap     d1
-         MWORD    a3,d1
-         moveq    #0,d0
-         rts
 next_answer
 ; skip class (2 octets)
          adda.l   #2,a3
@@ -185,9 +171,8 @@ next_answer_from_res
 ; Read resource length
          MWORD    a3,d1
          adda.w   d1,a3                               ; Skip over resource
-         dbra     d3,read_answers_until_A_record_found
+         dbra     d3,dns_response_scan_answers
 response_process_stack
-; TODO, process stack. Now just clear it
 ; d4 = # A records
 ; d5 = # CNAME records
 ; a0 = pointer to struct hostent
@@ -196,20 +181,23 @@ response_process_stack
          lea      STRUCT_HE_HADDRLIST+4(a0),a1        ; First word after struct hostent...
          move.l   a1,STRUCT_HE_HALIASES(a0)           ; ... is table of pointers to CNAMEs
          move.w   d5,d1
-         lsl.l    #2,d1                               ; End of table marker goes at offset num_cnames*4 bytes from start of table
-         move.l   #0,(a1,d1.l)
-         addq.l   #4,d1                               ; Long word after cname table end is start of A pointer table
-         adda.l   d1,a1
-         move.l   a1,STRUCT_HE_HADDRLIST(a0)
+         ext.l    d1
+         lea      0(a1),a3
+clear_cname_table
+         move.l   #0,(a3)+
+         dbra     d1,clear_cname_table                ; Need a terminating NULL long word so we do n+1 iterations
+; a3 now points at start of A table
+         move.l   a3,STRUCT_HE_HADDRLIST(a0)
          move.w   d4,d1
-         lsl.l    #2,d1
-         move.l   #0,(a1,d1.l)                        ; Set end of table marker for A pointer table
-         addq.l   #4,d1
-         adda.l   d1,a1                               ; A1 now points to area after CNAME and A tables
-         movea.l  a1,a5                               ; Save it in A5
+         ext.l    d1
+clear_A_table
+         move.l   #0,(a3)+
+         dbra     d1,clear_A_table                    ; Need a terminating NULL long word so we do n+1 iterations
+         movea.l  a3,a5                               ; Save it in A5
          add.w    d4,d5                               ; Total of A and CNAME records
          bra      resp_pop_end_check
 resp_pop_resource
+         movea.l  #0,a3                               ; a3 used as temp work pointer to resource record
          move.l   (a7)+,a1
          move.w   (a7)+,d1
          cmpi.w   #TYPE_A,d1
@@ -220,7 +208,8 @@ resp_pop_resource
          movem.l  d0/a1-a2,-(a7)
          movea.l  a5,a2                                  ; Target location
 ; Already set earlier: a0 = struct hostent, a1 = pointer to start of name
-         bsr      copy_res_name
+         bsr      copy_res_name_to_target
+; a3 now points to one byte past name in resource
          move.l   a5,(a0)
          movea.l  a2,a5
          movem.l  (a7)+,d0/a1-a2
@@ -232,7 +221,20 @@ find_a_record_slot
 ; Save pointer to ip address in the first empty slot
          move.l   a5,-(a2)
 ; TODO now just insert dead beef as ip address
-         move.l   #$DEADBEEF,(a5)+
+         cmpa.l   #0,a3                               ; Do we already have a pointer to res record past the name?
+         bne      find_and_copy_ip_from_rr
+; Otherwise skip past name (without following compression) and set a3 to point to one byte past it
+         movea.l  a1,a3
+         bsr      skip_over_name
+find_and_copy_ip_from_rr
+; At this point a3 points to byte following "name" field of resource record
+; We know that this is an A record so we can just pick the ip address by offset
+         lea      10(a3),a3
+         MWORD    a3,d1
+         swap     d1
+         MWORD    a3,d1
+         move.l   d1,(a5)+
+         bra      resp_pop_end_check
 resp_pop_check_cname
          cmpi.w   #TYPE_CNAME,d1
          bne      resp_pop_end_check
@@ -246,8 +248,12 @@ response_error
 ;     a1 : pointer to start of dns-format name
 ;     a2 : pointer to target location
 ;     a4 : pointer to dns response
+; Returns
+;     a3 : pointer to byte after name
 ; Corrupts:
-;     a1,a2,d0
+;     a1,a2,a3,d0
+copy_res_name_to_target
+         movea.l  #0,a3
 copy_res_name
          moveq    #0,d0
          move.b   (a1)+,d0
@@ -255,6 +261,10 @@ copy_res_name
          cmpi.b   #$C0,d0
          bne      copy_res_uncompressed
 ; Deal with compression: next byte is an offset from id field of the response strcuture
+         cmpa.l   #0,a3
+         bne      copy_res_compressed
+         lea      1(a1),a3
+copy_res_compressed
          move.b   (a1)+,d0
          ext.w    d0
          lea      0(a4,d0.w),a1
