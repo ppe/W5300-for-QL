@@ -273,13 +273,13 @@ nslookup_name_copy_loop
 nslookup_update_math_stack
          addq.b   #2,d2          ; Account for the string length word on the stack
          add.l    d2,BV_RIP(a6)
-         lea      NSL_IP_STRING_BUF(a5),a2
 ; Call inet_ntoa to get a (C-style null-terminated) ascii version of ip address, use math stack as result buffer
          moveq    #IP_INET_NTOA,d0
          moveq    #0,d3                  ; Timeout, -1 == wait for as long as it takes
          movea.l  NSL_SCK_CHANNEL(a5),a0
-         movea.l  NSL_STRUCT_HE_BUF(a5),a3
-         movea.l  STRUCT_HE_HADDRLIST+8(a3),a1    ; Pointer to first ip address in return struct
+         movea.l  STRUCT_HE_HADDRLIST(a2),a3       ; a3 now points to A table
+         movea.l  (a3),a1                          ; Pointer to first ip address in return struct
+         lea      NSL_IP_STRING_BUF(a5),a2
          trap     #3
          lea      NSL_IP_STRING_BUF(a5),a0
          bsr      strlen
@@ -433,21 +433,9 @@ lookup_hostname
          movem.l  (a7)+,a1-a3
 create_dummy_response
          bsr      hostent_init
-         movem.l  a1-a3,-(a7)
          lea      DNS_DUMMY_RESPONSE,a3
          movea.l  a2,a0                      ; a0 now points to struct hostent
          bsr      get_ip_from_dns_response   ; WIP: Try to fill in hostent from dns response
-         movem.l  (a7)+,a1-a3
-         tst.b    d0
-         bne      add_dummy_ip
-         move.l   d1,d0
-         bra      append_ip_to_hostent
-add_dummy_ip
-         move.l   #$0a010101,d0
-append_ip_to_hostent
-         bsr      hostent_add_ip
-;         move.l   #$0a020202,d0
-;         bsr      hostent_add_ip
          movea.l  (a7)+,a0
          moveq    #0,d0
          rts
