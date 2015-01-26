@@ -238,6 +238,14 @@ find_and_copy_ip_from_rr
 resp_pop_check_cname
          cmpi.w   #TYPE_CNAME,d1
          bne      resp_pop_end_check
+         move.l   STRUCT_HE_HALIASES(a0),a2
+find_cname_record_slot
+         tst.l    (a2)+
+         bne      find_cname_record_slot
+         move.l   a5,-(a2)
+         movea.l  a5,a2
+         bsr      copy_res_name_to_target
+         movea.l  a2,a5
 resp_pop_end_check
          dbra     d5,resp_pop_resource
          moveq    #-1,d0
