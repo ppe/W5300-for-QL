@@ -219,6 +219,12 @@ find_a_record_slot
          tst.l    (a2)+
          bne      find_a_record_slot
 ; Save pointer to ip address in the first empty slot
+         move.l   a5,d0
+         btst     #0,d0
+         beq      ip_target_word_aligned
+         addq.l   #1,d0
+         movea.l  d0,a5
+ip_target_word_aligned
          move.l   a5,-(a2)
 ; TODO now just insert dead beef as ip address
          cmpa.l   #0,a3                               ; Do we already have a pointer to res record past the name?
@@ -285,7 +291,9 @@ copy_res_name_loop
          move.b   #'.',(a2)+
          bra      copy_res_name
 copy_res_name_done
-         move.b   #0,(a2)+
+; Get rid of the last '.'
+         move.b   #0,-(a2)
+         addq.l   #1,a2
          rts
 ;
 ; Skip over name in DNS format also taking into account the compression scheme in RFC 1035 ch. 4.1.4
