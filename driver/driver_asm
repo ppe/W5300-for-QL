@@ -411,7 +411,7 @@ ip_gethostbyname_impl
          movea.l  (a7)+,a0
          moveq    #0,d0
          rts
-; TODO implement. For now just a fake implementation that copies the name to struct hostent and adds two static addresses
+; TODO implement socket layer. Now uses a static fake response.
 lookup_hostname
          movem.l  a1-a3,-(a7)
 ; Create and fill in a DNS query packet. For now, release it after creating it
@@ -437,8 +437,7 @@ create_dummy_response
          movea.l  a2,a0                      ; a0 now points to struct hostent
          bsr      get_ip_from_dns_response   ; WIP: Try to fill in hostent from dns response
          movea.l  (a7)+,a0
-         moveq    #0,d0
-         rts
+         rts                                 ; Return whatever dns response parser returns
 ; Initialize a struct hostent with a host name passed in
 ; Parameters:
 ;     A1: pointer to null-terminated host name string
