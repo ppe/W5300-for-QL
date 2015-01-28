@@ -48,6 +48,7 @@
          lea      KEYWORDS,a1
          move.w   BP_INIT,a4     ; Vector to link in new procedures and functions
          jsr      (a4)
+         bsr      w5300_init                 ; Reset and set up the ethernet card
          rts
 ;
 oom_exit
@@ -603,11 +604,11 @@ byte_to_string_handle_ones
          add.b   #$30,d1
          move.b  d1,(a0)+
          rts
-; Insert W5300 code
-;         in       mdv3_w5300_asm
 ; Insert parser utility functions
          in       dev1_parser_asm
          in       dev1_resolv_asm
+; Insert W5300 code
+         in       dev1_w5300_asm
 KEYWORDS dc.w     2             ; No of procedures we are linking in
          dc.w     QE_UNLOAD-*   ; Pointer to code of first procedure
          dc.b     9,'QE_UNLOAD' ; Name of first procedure
