@@ -444,6 +444,7 @@ lookup_hostname
 ; Release the DNS query heap block
          movea.l  a4,a0
          suba.l   #8,a0                      ; Point to beginning of allocated user heap block
+         movea.l  IO_DRVDB(a5),a3
          lea      QE_MEM_UH_PTR(a3),a1
          bsr      deallocate_user_heap
 create_dummy_response
