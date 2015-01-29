@@ -410,45 +410,54 @@ driver_info
 ;    D0 = result
 ;
 ip_gethostbyname_impl
-         move.l   a0,-(a7)
-         movem.l  a1-a3,-(a7)
+         link     a5,#-IO_LOCAL_VARS_SIZE
+         move.l   a0,IO_CHANDB(a5)
+         move.l   a3,IO_DRVDB(a5)
+         move.l   a6,IO_SYSVARS(a5)
+         move.l   a1,IO_HOSTNAME_PTR(a5)
+         move.l   a2,IO_STRUCT_HE_PTR(a5)
          lea      STRUCT_HE_HADDRLIST(a2),a2
          bsr      ip_inet_aton_impl                ; Returns ip address in d7 if successful
-         movem.l  (a7)+,a1-a3
          tst.b    d0
          bne      lookup_hostname
+         movea.l  IO_HOSTNAME_PTR(a5),a1
+         movea.l  IO_STRUCT_HE_PTR(a5),a2
          bsr      hostent_init
          move.l   d7,d0
          bsr      hostent_add_ip
-         movea.l  (a7)+,a0
+         movea.l  IO_CHANDB(a5),a0
+         unlk     a5
          moveq    #0,d0
          rts
 ; TODO implement socket layer. Now uses a static fake response.
 lookup_hostname
-         movem.l  a1-a3,-(a7)
 ; Create and fill in a DNS query packet. For now, release it after creating it
-         move.l   a1,a0
+         movea.l  IO_HOSTNAME_PTR(a5),a0
+         movea.l  a0,a4
          bsr      strlen
-         movea.l  a1,a4
+         movea.l  IO_DRVDB(a5),a3
          lea      QE_MEM_UH_PTR(a3),a0
          bsr      create_dns_query_buffer
          movea.l  a2,a4                      ; Save pointer to buffer
-         movem.l  (a7)+,a1-a3
          tst.b    d0
          bne      create_dummy_response
 ; Release the DNS query heap block
-         movem.l  a1-a3,-(a7)
          movea.l  a4,a0
          suba.l   #8,a0                      ; Point to beginning of allocated user heap block
          lea      QE_MEM_UH_PTR(a3),a1
          bsr      deallocate_user_heap
-         movem.l  (a7)+,a1-a3
 create_dummy_response
+         movea.l  IO_HOSTNAME_PTR(a5),a1
+         movea.l  IO_STRUCT_HE_PTR(a5),a2
          bsr      hostent_init
          lea      DNS_DUMMY_RESPONSE,a3
          movea.l  a2,a0                      ; a0 now points to struct hostent
+         move.l   a5,-(a7)                   ; Save frame pointer
          bsr      get_ip_from_dns_response   ; WIP: Try to fill in hostent from dns response
-         movea.l  (a7)+,a0
+         movea.l  (a7)+,a5
+         movea.l  IO_CHANDB(a5),a0
+         unlk     a5
+         moveq    #0,d0
          rts                                 ; Return whatever dns response parser returns
 ; Initialize a struct hostent with a host name passed in
 ; Parameters:
@@ -512,17 +521,16 @@ strlen_loop
          bra      strlen_loop
 strlen_exit
          rts
-; Add an ip address to a struct hostent
+; DEPRECATED, TODO: remove Add an ip address to a struct hostent
 ; PREREQUISITE: struct hostent has been initialized so that the ip address list pointer is valid
 ; Parameters:
 ;     A2: pointer to a struct hostent buffer with sufficient space
 ;     D0.l ip address to add
 hostent_add_ip
          movea.l  STRUCT_HE_HADDRLIST(a2),a3
-hostent_find_iplist_end
-         move.l   (a3)+,d1
-         bne      hostent_find_iplist_end
-         move.l   d0,-4(a3)
+         lea      8(a3),a4
+         move.l   a4,(a3)+
+         move.l   d0,(a4)
          clr.l    (a3)
          rts
 ;

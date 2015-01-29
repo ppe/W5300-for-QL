@@ -1,7 +1,7 @@
 ; create_dns_query_buffer
 ; Parameters
 ;        d0=length of string pointed to by a4
-;        a1=user heap free space handle
+;        a0=user heap free space handle
 ;        a4=pointer to (C-style) string representing address to resolve
 ; Returns:
 ;        d0 = status code, 0 == ok, -1 == error

@@ -17,6 +17,12 @@ IP_GETHOSTBYNAME     equ      $5E
 IP_INET_ATON         equ      $72
 IP_INET_NTOA         equ      $75
 ; End netdb functions
+IO_LOCAL_VARS_SIZE   equ      20          ; Frame size for local variables in channel io routine
+IO_CHANDB            equ      -12         ; Frame pointer offset to channel definition block in Channel IO frame
+IO_DRVDB             equ      -8          ; Frame pointer offset to driver definition block in Channel IO frame
+IO_SYSVARS           equ      -4          ; Frame pointer offset to system variables in Channel IO frame
+IO_HOSTNAME_PTR      equ      -16         ; Frame pointer offset to pointer to host name
+IO_STRUCT_HE_PTR     equ      -20         ; Frame pointer offset to pointer to struct hostent
 QE_IO_DRV_INFO       equ      $7E
 QE_MEM_UH_PTR        equ      $28         ; Long word pointer to user heap base address (needed for QDOS user heap MT_ALLOC calls)
 QE_MEM_SOCK_RT       equ      $40         ; Socket reservation table to mark which channel is using which socket
