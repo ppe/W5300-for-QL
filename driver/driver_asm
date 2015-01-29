@@ -35,6 +35,7 @@
          tst.b    d0
          bne      direct_exit
          suba.l   #$18,a0             ; Reset A0 to point to start of linkage block
+         move.l   a0,-(a7)             ; And save it for later
 ; Set up a user heap for temporary storage needs
          lea      QE_MEM_UH_PTR(a0),a1       ; Pointer to heap header
          move.l   0,(a1)                     ; Indicate this is a new heap
@@ -49,6 +50,16 @@
          move.w   BP_INIT,a4     ; Vector to link in new procedures and functions
          jsr      (a4)
          bsr      w5300_init                 ; Reset and set up the ethernet card
+; Restore pointer to linkage blck
+         movea.l  (a7)+,a0
+; Initialize socket reservation table - all sockets are not reserved
+         lea      QE_MEM_SOCK_RT(a0),a1      ; Start of socket reservation table
+         move.w   #NUM_SOCKETS,d0
+         subq.w   #1,d0
+sock_res_table_init_loop
+         move.l   #SOCK_RT_STAT_FREE,(a1)+   ; Mark the socket as not reserved
+         dbra     d0,sock_res_table_init_loop
+         moveq    #0,d0
          rts
 ;
 oom_exit
