@@ -66,6 +66,24 @@ oom_exit
          movea.l  (a7)+,a6
 direct_exit
          rts
+; Reserve a socket
+; a0: pointer to channel definition block, used as reservation identifier
+; a3: pointer to driver definition block
+; Returns:
+; D0 : 0-7 == number of socket reserved for the channel, FF == no sockets available
+;
+reserve_socket
+         lea      QE_MEM_SOCK_RT_END(a3),a1         ; Pointer to one past last entry in the table
+         moveq    #NUM_SOCKETS-1,d0
+reserve_socket_loop
+         cmpi.l   #SOCK_RT_STAT_FREE,-(a1)
+         beq      reserve_socket_found
+         dbra     d0,reserve_socket_loop
+reserve_socket_exit
+         rts
+reserve_socket_found
+         move.l   a0,(a1)
+         rts
 ;
 open_sck_channel
          moveq    #IO_OPEN,d0
@@ -431,6 +449,11 @@ ip_gethostbyname_impl
          rts
 ; TODO implement socket layer. Now uses a static fake response.
 lookup_hostname
+; Reserve a socket
+         movea.l  IO_CHANDB(a5),a0
+         movea.l  IO_DRVDB(a5),a3
+         bsr      reserve_socket
+; TODO check which socket or error
 ; Create and fill in a DNS query packet. For now, release it after creating it
          movea.l  IO_HOSTNAME_PTR(a5),a0
          movea.l  a0,a4

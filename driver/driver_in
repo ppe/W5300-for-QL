@@ -26,6 +26,7 @@ IO_STRUCT_HE_PTR     equ      -20         ; Frame pointer offset to pointer to s
 QE_IO_DRV_INFO       equ      $7E
 QE_MEM_UH_PTR        equ      $28         ; Long word pointer to user heap base address (needed for QDOS user heap MT_ALLOC calls)
 QE_MEM_SOCK_RT       equ      $40         ; Socket reservation table to mark which channel is using which socket
+QE_MEM_SOCK_RT_END   equ      $60         ; End of socket reservation table
 QE_MEM_USER_HEAP     equ      $200        ; Offset to start of user heap
 HOSTENT_BUF_SIZE     equ      1024        ; Buffer space size for names, aliases and addresses in the temporary struct hostent
 STRUCT_HE_SIZE       equ      20          ; Size of struct hostent
