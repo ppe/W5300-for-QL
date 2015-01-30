@@ -84,6 +84,28 @@ reserve_socket_exit
 reserve_socket_found
          move.l   a0,(a1)
          rts
+; Release a socket
+; a0: pointer to channel definition block
+; a3: pointer to driver definition block
+; d0: number of socket to release
+release_socket
+         cmpi.b   #NUM_SOCKETS-1,d0
+         bhi      invalid_socket_number
+         ext.w    d0
+         lsl.w    #2,d0
+         lea      QE_MEM_SOCK_RT(a3,d0.w),a1
+         move.l   (a1),d1
+         cmpa.l   d1,a0
+         bne      illegal_socket_reservation
+         move.l   #SOCK_RT_STAT_FREE,(a1)
+         moveq    #0,d0
+         rts
+invalid_socket_number
+         moveq    #-1,d0
+         rts
+illegal_socket_reservation
+         moveq    #-2,d0
+         rts
 ;
 open_sck_channel
          moveq    #IO_OPEN,d0
@@ -453,7 +475,8 @@ lookup_hostname
          movea.l  IO_CHANDB(a5),a0
          movea.l  IO_DRVDB(a5),a3
          bsr      reserve_socket
-; TODO check which socket or error
+; TODO check error
+         move.w   d0,IO_SOCK_NUM(a5)
 ; Create and fill in a DNS query packet. For now, release it after creating it
          movea.l  IO_HOSTNAME_PTR(a5),a0
          movea.l  a0,a4
@@ -479,6 +502,12 @@ create_dummy_response
          move.l   a5,-(a7)                   ; Save frame pointer
          bsr      get_ip_from_dns_response   ; WIP: Try to fill in hostent from dns response
          movea.l  (a7)+,a5
+; Release the reserved socket
+         movea.l  IO_CHANDB(a5),a0
+         movea.l  IO_DRVDB(a5),a3
+         move.w   IO_SOCK_NUM(a5),d0
+         bsr      release_socket
+; TODO check error
          movea.l  IO_CHANDB(a5),a0
          unlk     a5
          moveq    #0,d0
