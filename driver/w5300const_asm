@@ -50,9 +50,13 @@ S7_BASE  equ      $3C0              ; Base address for socket 7 addressing
 ; Socket register offsets
 S_MR     equ      $00               ; Socket mode register
 S_CR     equ      $02               ; Socket command register
+S_CR0    equ      $02               ; Socket command register low byte (reserved)
+S_CR1    equ      $03               ; Socket command register high byte
 S_IMR    equ      $04               ; Socket interrupt mask register
 S_IR     equ      $06               ; Socket interrupt register
-S_SSR    equ      $08               ; Socket status register
+S_SSR    equ      $08               ; Socket status register (word)
+S_SSR0   equ      $08               ; Socket status register (low byte, reserved)
+S_SSR1   equ      $09               ; Socket status register (high byte)
 S_PORTR  equ      $0A               ; Socket source port register
 S_DHAR   equ      $0C               ; Socket destination hardware address register
 S_DPORTR equ      $12               ; Socket destination port register
@@ -81,3 +85,4 @@ SC_CONN  equ      4
 SS_CLSD  equ      0                 ; SOCK_CLOSED state
 SS_INIT  equ      $13               ; SOCK_INIT state
 SS_ESTD  equ      $17               ; SOCK_ESTABLISHED state
+SS_UDP   equ      $22               ; SOCK_UDP state

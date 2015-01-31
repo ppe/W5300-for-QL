@@ -77,12 +77,56 @@ s_c_res  move.w   S_SSR(a2),d0
          rts
 s_clsd   moveq    #ERR_NO,d0                     ; -6 = channel not open
          rts
+;
+; Open a UDP socket
+; Parameters:
+;  d0.b = socket number
+; Returns:
+;  d0.b = result code: -2 == socket not in closed state, -1 == not complete, 0 == success
+;  a0 = address to call on the next tick if d0==-1
+; Corrupts:
+;  d1,d2,a2
+socket_open_udp
+; Check that the socket is currently in SOCK_CLOSED state
+         ext.w    d0
+         move.w   d0,d1
+         bsr      sr_base                       ; a2 <= base address of socket n registers
+         move.b   S_SSR1(a2),d2
+         cmpi.b   #SS_CLSD,d2
+         beq      socket_not_closed_err
+; Set socket mode to UDP
+         andi.w   #S_MR_PM,S_MR(a2)
+         ori.w    #S_MR_UDP,S_MR(a2)
+; Send an "open" command
+         move.b   #SC_OPEN,S_CR1(a2)
+; Wait for W5300 to acknowledge command by resetting command register to 0
+udp_open_check_cmd_ack
+         move.b   S_CR1(a2),d2
+         cmpi.b   #0,d2
+         beq      udp_open_wait_state_udp
+         lea      udp_open_check_cmd_ack,a0
+         moveq    #ERR_NC,d0
+         rts
+udp_open_wait_state_udp
+; Wait for socket to move to state SOCK_UDP
+         move.b   S_SSR1(a2),d2
+         cmpi.b   #SS_UDP,d2
+         beq      udp_open_ok
+         lea      udp_open_wait_state_udp,a0
+         moveq    #ERR_NC,d0
+         rts
+udp_open_ok
+         moveq    #0,d0
+         rts
+socket_not_closed_err
+         moveq    #-2,d0
+         rts
 ; Subroutine to get socket state, socket register base address passed in a2
 ; Returns current socket state in d0
 s_getst  move.w   S_SSR(a2),d0
          cmpi.b   #SS_INIT,d0
          rts
-
+;
 ; Find base address for a socket's registers and return it in a2
 ; Parameters:
 ;        d1.b     number of socket (0-7)
