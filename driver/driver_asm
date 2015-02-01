@@ -478,7 +478,7 @@ ip_gethostbyname_impl
          movea.l  IO_STRUCT_HE_PTR(a5),a2
          bsr      hostent_init
          move.l   d7,d0
-         bsr      hostent_add_ip
+         bsr      hostent_set_single_ip
          movea.l  IO_CHANDB(a5),a0
          moveq    #0,d0
          rts
@@ -570,7 +570,7 @@ hostent_init_set_haddrlist
 ;     A2: pointer to a struct hostent buffer with sufficient space
 ;     D0.l ip address to add
 ;
-hostent_add_ip
+hostent_set_single_ip
          movea.l  STRUCT_HE_HADDRLIST(a2),a3
 ; 0-7 = table of address pointers (1 entry + terminator), 8-11 = null terminator for alias table
          lea      12(a3),a4
