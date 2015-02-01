@@ -17,13 +17,16 @@ IP_GETHOSTBYNAME     equ      $5E
 IP_INET_ATON         equ      $72
 IP_INET_NTOA         equ      $75
 ; End netdb functions
-IO_LOCAL_VARS_SIZE   equ      22          ; Frame size for local variables in channel io routine
-IO_CHANDB            equ      -12         ; Frame pointer offset to channel definition block in Channel IO frame
-IO_DRVDB             equ      -8          ; Frame pointer offset to driver definition block in Channel IO frame
-IO_SYSVARS           equ      -4          ; Frame pointer offset to system variables in Channel IO frame
-IO_HOSTNAME_PTR      equ      -16         ; Frame pointer offset to pointer to host name
-IO_STRUCT_HE_PTR     equ      -20         ; Frame pointer offset to pointer to struct hostent
-IO_SOCK_NUM          equ      -22
+CHAN_LOCAL_VARS      equ      $18         ; Offset from start of channel definition block
+CHAN_CONT_ADDR       equ      $60         ; Drv def block offset to pointer to continuation address for resumed IO calls
+CHAN_REG_STORE       equ      $64         ; Drv def block offset to register store for resumed IO calls
+IO_CHANDB            equ      8           ; Frame pointer offset to channel definition block in Channel IO frame
+IO_DRVDB             equ      4           ; Frame pointer offset to driver definition block in Channel IO frame
+IO_SYSVARS           equ      0           ; Frame pointer offset to system variables in Channel IO frame
+IO_HOSTNAME_PTR      equ      12          ; Frame pointer offset to pointer to host name
+IO_STRUCT_HE_PTR     equ      16          ; Frame pointer offset to pointer to struct hostent
+IO_SOCK_NUM          equ      20          ; Word size
+IO_DNS_QUERY_BUF_PTR equ      22          ; Pointer to block of memory containing outgoing DNS query
 QE_IO_DRV_INFO       equ      $7E
 QE_MEM_UH_PTR        equ      $28         ; Long word pointer to user heap base address (needed for QDOS user heap MT_ALLOC calls)
 QE_MEM_SOCK_RT       equ      $40         ; Socket reservation table to mark which channel is using which socket

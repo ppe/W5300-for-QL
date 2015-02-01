@@ -81,9 +81,10 @@ s_clsd   moveq    #ERR_NO,d0                     ; -6 = channel not open
 ; Open a UDP socket
 ; Parameters:
 ;  d0.b = socket number
+;  a0 = pointer to driver definition block
 ; Returns:
 ;  d0.b = result code: -2 == socket not in closed state, -1 == not complete, 0 == success
-;  a0 = address to call on the next tick if d0==-1
+;  a1 = address to call on the next tick if d0==-1
 ; Corrupts:
 ;  d1,d2,a2
 socket_open_udp
@@ -93,7 +94,7 @@ socket_open_udp
          bsr      sr_base                       ; a2 <= base address of socket n registers
          move.b   S_SSR1(a2),d2
          cmpi.b   #SS_CLSD,d2
-         beq      socket_not_closed_err
+         bne      socket_not_closed_err
 ; Set socket mode to UDP
          andi.w   #S_MR_PM,S_MR(a2)
          ori.w    #S_MR_UDP,S_MR(a2)
@@ -104,7 +105,9 @@ udp_open_check_cmd_ack
          move.b   S_CR1(a2),d2
          cmpi.b   #0,d2
          beq      udp_open_wait_state_udp
-         lea      udp_open_check_cmd_ack,a0
+         lea      udp_open_check_cmd_ack,a1
+         move.l   a2,CHAN_REG_STORE(a0)         ; Store pointer to socket register block
+         move.l   (a7),CHAN_REG_STORE+4(a0)   ; Store return address
          moveq    #ERR_NC,d0
          rts
 udp_open_wait_state_udp
@@ -112,7 +115,9 @@ udp_open_wait_state_udp
          move.b   S_SSR1(a2),d2
          cmpi.b   #SS_UDP,d2
          beq      udp_open_ok
-         lea      udp_open_wait_state_udp,a0
+         lea      udp_open_wait_state_udp,a1
+         move.l   a2,CHAN_REG_STORE(a0)         ; Store pointer to socket register block
+         move.l   (a7),CHAN_REG_STORE+4(a0)   ; Store return address
          moveq    #ERR_NC,d0
          rts
 udp_open_ok

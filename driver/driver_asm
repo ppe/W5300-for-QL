@@ -398,7 +398,7 @@ open_channel
 ; reserve space for the channel definition block
 ; save A0 in case memory allocation fails
          move.l   a0,-(a7)
-         move.l   #$40,d1
+         move.l   #$80,d1
 ; A6 already points to sysvars when handling a trap #3
 ; Also, we are already in supervisor mode, which is a prerequisite for MM_ALCHP
          movea.w  MM_ALCHP,a4
@@ -406,11 +406,14 @@ open_channel
          bne      open_channel_fail
          adda.l   #4,a7             ; purge saved a0 from stack
 ; a0 contains pointer to allocated channel definition block with $0(a0).w containing length of definition block
+;
+; Initialize driver-specific storage in channel def block
+         move.l   #0,CHAN_CONT_ADDR(a0)   ; Clear continuation address
          rts
 notme
          moveq    #-7,d0            ; "not found" == driver name does not match
          rts
-
+;
 open_channel_fail
          movea.l  (a7)+,a0
          rts
@@ -419,6 +422,18 @@ close_channel
          jsr      (a4)
          rts
 channel_IO
+         lea      CHAN_LOCAL_VARS(a0),a5
+         cmpi.b   #0,d3                      ; D3==0 if first call, D3==-1 if re-entering a not-complete call
+         beq      channel_IO_check_operation
+         cmpi.l   #0,CHAN_CONT_ADDR(a0)      ; Check if the chan def block contains a continuation address
+         beq      channel_IO_check_operation ; If it was 0 then we don't have a continuation address
+         movea.l  CHAN_REG_STORE(a0),a2      ; Restore A2 (TODO: set of registers)
+         move.l   CHAN_REG_STORE+4(a0),d1    ; Return address to push on to the stack
+         move.l   d1,-(a7)
+         movea.l  CHAN_CONT_ADDR(a0),a1
+         move.l   #0,CHAN_CONT_ADDR(a0)      ; Reset continuation so that we don't call it again
+         jmp      (a1)
+channel_IO_check_operation
          cmpi.b   #QE_IO_DRV_INFO,d0
          beq      driver_info
          cmpi.b   #IP_GETHOSTBYNAME,d0
@@ -450,7 +465,6 @@ driver_info
 ;    D0 = result
 ;
 ip_gethostbyname_impl
-         link     a5,#-IO_LOCAL_VARS_SIZE
          move.l   a0,IO_CHANDB(a5)
          move.l   a3,IO_DRVDB(a5)
          move.l   a6,IO_SYSVARS(a5)
@@ -466,7 +480,6 @@ ip_gethostbyname_impl
          move.l   d7,d0
          bsr      hostent_add_ip
          movea.l  IO_CHANDB(a5),a0
-         unlk     a5
          moveq    #0,d0
          rts
 ; TODO implement socket layer. Now uses a static fake response.
@@ -484,11 +497,22 @@ lookup_hostname
          movea.l  IO_DRVDB(a5),a3
          lea      QE_MEM_UH_PTR(a3),a0
          bsr      create_dns_query_buffer
-         movea.l  a2,a4                      ; Save pointer to buffer
+         move.l   a2,IO_DNS_QUERY_BUF_PTR(a5)
          tst.b    d0
          bne      create_dummy_response
+; Open a UDP socket for the query
+         move.w   IO_SOCK_NUM(a5),d0
+         movea.l  IO_CHANDB(a5),a0
+         bsr      socket_open_udp
+         tst.b    d0
+         beq      release_query_block
+         cmpi.b   #ERR_NC,d0
+         bne      release_query_block
+         move.l   a1,CHAN_CONT_ADDR(a0)
+         bra      lookup_hostname_exit
 ; Release the DNS query heap block
-         movea.l  a4,a0
+release_query_block
+         movea.l  IO_DNS_QUERY_BUF_PTR(a5),a0
          suba.l   #8,a0                      ; Point to beginning of allocated user heap block
          movea.l  IO_DRVDB(a5),a3
          lea      QE_MEM_UH_PTR(a3),a1
@@ -508,9 +532,10 @@ create_dummy_response
          move.w   IO_SOCK_NUM(a5),d0
          bsr      release_socket
 ; TODO check error
-         movea.l  IO_CHANDB(a5),a0
-         unlk     a5
          moveq    #0,d0
+; Exit with whatever code is in d0
+lookup_hostname_exit
+         movea.l  IO_CHANDB(a5),a0
          rts                                 ; Return whatever dns response parser returns
 ; Initialize a struct hostent with a host name passed in
 ; Parameters:
