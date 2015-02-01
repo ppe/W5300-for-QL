@@ -107,6 +107,24 @@ illegal_socket_reservation
          moveq    #-2,d0
          rts
 ;
+; Find a reserved socket based on pointer to channel definition block
+; Parameters:
+;  a0: pointer to channel definition block
+;  a3: pointer to driver definition block
+; Returns:
+;  d0: -1 if no sockets reserved for this socket, 0-7 indicates a socket # reserved for the channel
+;
+find_socket_reservation
+         lea      QE_MEM_SOCK_RT_END(a3),a1         ; Pointer to one past last entry in the table
+         moveq    #NUM_SOCKETS-1,d0
+find_socket_loop
+         cmpa.l   -(a1),a0
+         beq      reserved_socket_found
+         dbra     d0,find_socket_loop
+         rts            ; D0 == -1
+reserved_socket_found
+         rts      ; D0 contains socket number (0-7)
+;
 open_sck_channel
          moveq    #IO_OPEN,d0
          moveq    #-1,d1         ; Current job owns the channel
@@ -418,13 +436,26 @@ open_channel_fail
          movea.l  (a7)+,a0
          rts
 close_channel
+         bsr      release_and_close_sockets
          movea.w  MM_RECHP,a4
          jsr      (a4)
          rts
+; a0 = chan def block
+; a3 = drv def block
+release_and_close_sockets
+         bsr      find_socket_reservation
+         cmpi.b   #-1,d0
+         beq      release_and_close_end
+         bsr      socket_close
+         bsr      release_socket
+         bra      release_and_close_sockets
+release_and_close_end
+         rts
+;
 channel_IO
          lea      CHAN_LOCAL_VARS(a0),a5
          cmpi.b   #0,d3                      ; D3==0 if first call, D3==-1 if re-entering a not-complete call
-         beq      channel_IO_check_operation
+         beq      channel_IO_check_timedout
          cmpi.l   #0,CHAN_CONT_ADDR(a0)      ; Check if the chan def block contains a continuation address
          beq      channel_IO_check_operation ; If it was 0 then we don't have a continuation address
          movea.l  CHAN_REG_STORE(a0),a2      ; Restore A2 (TODO: set of registers)
@@ -433,6 +464,15 @@ channel_IO
          movea.l  CHAN_CONT_ADDR(a0),a1
          move.l   #0,CHAN_CONT_ADDR(a0)      ; Reset continuation so that we don't call it again
          jmp      (a1)
+channel_IO_check_timedout
+; We arrive here with a new operation (D3=0)
+; Check if a previous operation timed out and left a continuation
+; If so, cleanup resources associated with the previous call
+         cmpi.l   #0,CHAN_CONT_ADDR(a0)
+         beq      channel_IO_check_operation ; No continuation, nothing to clean up
+; Clean up previous call's resources
+; Check if there are sockets reserved for this channel (a0 points to chan def block)
+         bsr      release_and_close_sockets
 channel_IO_check_operation
          cmpi.b   #QE_IO_DRV_INFO,d0
          beq      driver_info

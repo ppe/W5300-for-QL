@@ -127,8 +127,8 @@ udp_open_wait_state_udp
 ; Wait for socket to move to state SOCK_UDP
          move.b   S_SSR1(a2),d2
 ; TODO: testing, switch to correct implementation below on real HW
-         cmpi.b   #0,d2
-;         cmpi.b   #SS_UDP,d2
+;         cmpi.b   #0,d2
+         cmpi.b   #SS_UDP,d2
          beq      udp_open_ok
          lea      udp_open_wait_state_udp,a1
          move.l   a2,CHAN_REG_STORE(a0)         ; Store pointer to socket register block
