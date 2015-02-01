@@ -526,17 +526,21 @@ create_dummy_response
          move.l   a5,-(a7)                   ; Save frame pointer
          bsr      get_ip_from_dns_response   ; WIP: Try to fill in hostent from dns response
          movea.l  (a7)+,a5
-; Release the reserved socket
+; Close and release the reserved socket
          movea.l  IO_CHANDB(a5),a0
          movea.l  IO_DRVDB(a5),a3
          move.w   IO_SOCK_NUM(a5),d0
+; Close the socket
+; TODO: how to close and release when operation does not complete within the allocated timeout??!!
+         bsr      socket_close
          bsr      release_socket
 ; TODO check error
          moveq    #0,d0
 ; Exit with whatever code is in d0
 lookup_hostname_exit
          movea.l  IO_CHANDB(a5),a0
-         rts                                 ; Return whatever dns response parser returns
+         rts
+;
 ; Initialize a struct hostent with a host name passed in
 ; Parameters:
 ;     A1: pointer to null-terminated host name string

@@ -78,6 +78,19 @@ s_c_res  move.w   S_SSR(a2),d0
 s_clsd   moveq    #ERR_NO,d0                     ; -6 = channel not open
          rts
 ;
+; Close a socket
+; Parameters:
+;  d0.b = socket number
+; Returns:
+;  -
+; Corrupts:
+;  a2
+socket_close
+         ext.w    d0
+         bsr      sr_base                       ; a2 <= base address of socket n registers
+         move.b   #SC_OPEN,S_CR1(a2)
+         rts
+;
 ; Open a UDP socket
 ; Parameters:
 ;  d0.b = socket number
@@ -141,7 +154,8 @@ s_getst  move.w   S_SSR(a2),d0
 ;        d7
 
 sr_base  movea.l  #iobase+S_BASE,a2
-         move.b   d1,d7
+         ext.w    d1
+         move.w   d1,d7
          mulu     #S_SIZE,d7
          adda.w   d7,a2
          rts
