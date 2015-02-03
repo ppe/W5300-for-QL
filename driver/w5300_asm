@@ -1,4 +1,7 @@
-         in       dev1_w5300const_asm
+         include  dev1_w5300const_asm
+         include  dev1_driver_in
+         include  dev2_SMS1_in
+         section  w5300
 w5300_init
          movea.l  #iobase,a1        ; A1 points to beginning of memory mapped IO space into W5300
          movea.l  a1,a0
@@ -57,7 +60,7 @@ s_init   bsr      sr_base
          bsr      s_getst
          move.w   S_SSR(a2),d0
          cmpi.b   #SS_INIT,d0
-         beq      s_dest
+         beq.s    s_dest
          moveq    #-1,d0
          rts
 ; Set the destination address and port
@@ -67,7 +70,7 @@ s_dest   move.l   #$C0A80001,S_DIPR(a2)      ; 192.168.0.1
          move.w   #SC_CONN,S_CR(a2)
 ; Wait for the socket to move either to "closed" (due to ARP or TCP timeout) or "established" state
 s_c_res  move.w   S_SSR(a2),d0
-         beq      s_clsd                     ; State "0" means socket has been closed due to timeout
+         beq.s    s_clsd                     ; State "0" means socket has been closed due to timeout
          cmpi.w   #SS_ESTD,d0
          bne      s_c_res
 ; Socket connection is now established
@@ -75,7 +78,7 @@ s_c_res  move.w   S_SSR(a2),d0
 ; Now wait for the socket to move to "initialized" state
          moveq    #0,d0
          rts
-s_clsd   moveq    #ERR_NO,d0                     ; -6 = channel not open
+s_clsd   moveq    #err.ichn,d0                     ; -6 = invalid channel id
          rts
 ;
 ; Close a socket
@@ -87,7 +90,7 @@ s_clsd   moveq    #ERR_NO,d0                     ; -6 = channel not open
 ;  a2
 socket_close
          ext.w    d0
-         bsr      sr_base                       ; a2 <= base address of socket n registers
+         bsr.s    sr_base                       ; a2 <= base address of socket n registers
          move.b   #SC_OPEN,S_CR1(a2)
          rts
 ;
@@ -104,10 +107,10 @@ socket_open_udp
 ; Check that the socket is currently in SOCK_CLOSED state
          ext.w    d0
          move.w   d0,d1
-         bsr      sr_base                       ; a2 <= base address of socket n registers
+         bsr.s    sr_base                       ; a2 <= base address of socket n registers
          move.b   S_SSR1(a2),d2
          cmpi.b   #SS_CLSD,d2
-         bne      socket_not_closed_err
+         bne.s    socket_not_closed_err
 ; Set socket mode to UDP
          andi.w   #S_MR_PM,S_MR(a2)
          ori.w    #S_MR_UDP,S_MR(a2)
@@ -117,7 +120,7 @@ socket_open_udp
 udp_open_check_cmd_ack
          move.b   S_CR1(a2),d2
          cmpi.b   #0,d2
-         beq      udp_open_wait_state_udp
+         beq.s    udp_open_wait_state_udp
          lea      udp_open_check_cmd_ack,a1
          move.l   a2,CHAN_REG_STORE(a0)         ; Store pointer to socket register block
          move.l   (a7),CHAN_REG_STORE+4(a0)   ; Store return address
@@ -129,7 +132,7 @@ udp_open_wait_state_udp
 ; TODO: testing, switch to correct implementation below on real HW
 ;         cmpi.b   #0,d2
          cmpi.b   #SS_UDP,d2
-         beq      udp_open_ok
+         beq.s    udp_open_ok
          lea      udp_open_wait_state_udp,a1
          move.l   a2,CHAN_REG_STORE(a0)         ; Store pointer to socket register block
          move.l   (a7),CHAN_REG_STORE+4(a0)   ; Store return address
@@ -178,7 +181,7 @@ sr_base  movea.l  #iobase+S_BASE,a2
 ; since we are looping with dbf d2 will contain number of loops - 1
 ;
 w_rdbuf  asr.w    #1,d2
-         bcs      wrb_odd
+         bcs.s    wrb_odd
          subq.w   #1,d2
 ; Get the base address of this socket's registers into a2
 wrb_odd  bsr      sr_base
@@ -188,10 +191,11 @@ w_rdloop move.w   S_RXFIFO(a2),(a3)+
          rts
 ;
 w_wrbuf  asr.w    #1,d2
-         bcs      wwb_odd
+         bcs.s    wwb_odd
          subq.w   #1,d2
 wwb_odd  bsr      sr_base
          movea.l  a1,a3
 w_wloop  move.w   (a3)+,S_TXFIFO(a2)
          dbf      d2,w_wloop
          rts
+         end
