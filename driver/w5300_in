@@ -1,4 +1,4 @@
-iobase   equ      $12000
+iobase   equ      $12000            ; Base address of card
 MR       equ      $0                ; Mode register
 IR       equ      $002              ; Interrupt register address
 IMR      equ      $004              ; Interrupt mask register

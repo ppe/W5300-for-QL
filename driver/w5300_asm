@@ -1,4 +1,4 @@
-         include  dev1_w5300const_asm
+         include  dev1_w5300_in
          include  dev1_driver_in
          include  dev2_SMS1_in
          section  w5300
