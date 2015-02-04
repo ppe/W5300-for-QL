@@ -1,3 +1,4 @@
+         section parser
 ; On entry from driver:
 ; a1 points to driver name (with no length word at beginning, fixed length of 3 bytes)
 ; a2 points to string passed to driver in open call, e.g. "udp_127.0.0.1:80" preceded
@@ -7,9 +8,9 @@ match_udp_drv_name
 ; deleted...
 isnum    moveq    #1,d0
          cmpi.b   #$30,d1
-         blt      notnum
+         blt.s    notnum
          cmpi.b   #$39,d1
-         bgt      notnum
+         bgt.s    notnum
 numok    moveq    #0,d0
 notnum   rts
 ;
@@ -19,11 +20,11 @@ notnum   rts
 rdnum    moveq    #0,d2                               ; Accumulator for the number
          moveq    #0,d3                               ; loop counter
 rdnloop  cmp.w    d4,d3
-         bge      rdldone
+         bge.s    rdldone
          move.b   0(a1,d3.w),d1
          bsr      isnum
          tst.b    d0
-         bne      rdldone
+         bne.s    rdldone
          sub.b    #$30,d1
          ext.w    d1
 ;         mulu     #10,d2                 ; 42+2n (n=# 1's in ea) = 46 clocks + ea (8, imm) = 54 clocks, 4 reads from mem
@@ -36,7 +37,7 @@ rdnloop  cmp.w    d4,d3
          addq.w   #1,d3
          bra      rdnloop
 rdldone  tst.w    d3
-         beq      no_number_read
+         beq.s    no_number_read
          moveq    #0,d0
          rts
 no_number_read
@@ -45,11 +46,11 @@ no_number_read
 ;
 rdbyte   bsr      rdnum
          tst.b    d0
-         bne      rdb_exit_err
+         bne.s    rdb_exit_err
          cmpi.w   #255,d2
-         bgt      rdb_exit_err
+         bgt.s    rdb_exit_err
          cmpi.w   #0,d2
-         blt      rdb_exit_err
+         blt.s    rdb_exit_err
          moveq    #0,d0
          rts
 rdb_exit_err
@@ -65,25 +66,25 @@ rdb_exit_err
 read_ip_address
          moveq    #2,d6                               ; Read the first three octets
 read_ip_loop
-         bsr      read_byte_and_update_regs
+         bsr.s    read_byte_and_update_regs
          tst.b    d0
-         bne      not_ip
+         bne.s    not_ip
          cmpi.b   #'.',(a1)+
-         bne      not_ip
+         bne.s    not_ip
          subq.w   #1,d4                               ; Update remaining length
          dbf      d6,read_ip_loop
-         bsr      read_byte_and_update_regs
+         bsr.s    read_byte_and_update_regs
          tst.b    d0
-         bne      not_ip
+         bne.s    not_ip
          cmpi.b   #0,(a1)+                            ; Last byte should be a terminating null
-         bne      not_ip
+         bne.s    not_ip
          rts
 not_ip   moveq    #-1,d0
          rts
 read_byte_and_update_regs
          bsr      rdbyte
          tst.b    d0
-         bne      abort_read
+         bne.s    abort_read
          asl.l    #8,d7
          move.b   d2,d7                               ; d2 is the accumulated byte value from 'rdbyte'
          adda.w   d3,a1                               ; d3 from 'rdbyte' shows how many chars were read
@@ -98,15 +99,15 @@ resolve_host_name
 find_host_name
          move.b   (a3)+,d1
          cmpi.b   #':',d1
-         beq      colon_after_host_name_found
+         beq.s    colon_after_host_name_found
          dbf      d4,find_host_name
-         bra      invalid_host_name                   ; No colon after host name found -> invalid
+         bra.s    invalid_host_name                   ; No colon after host name found -> invalid
 colon_after_host_name_found
          suba.l   a1,a3
          move.w   a3,d2
          subq.w   #1,d2                               ; Length of string before ':', a3 is always incremented at least once
          cmp.w    #0,d2                               ; Was colon the first character? i.e. no host name given
-         beq      invalid_host_name
+         beq.s    invalid_host_name
 ; a1 still points to start of string, d2.w contains length of hostname string
 ;
 ; TODO call resolver here with the hostname
@@ -117,3 +118,4 @@ colon_after_host_name_found
 invalid_host_name
          moveq    #1,d0
          rts
+         end
