@@ -1,3 +1,8 @@
+         section  resolver
+         xref     allocate_user_heap
+         xref     deallocate_user_heap
+         include  'dev1_resolv_macros_in'
+         include  'dev1_driver_in'
 ; create_dns_query_buffer
 ; Parameters
 ;        d0=length of string pointed to by a4
@@ -13,13 +18,14 @@ dns_qqt     equ      4                 ; Four bytes at end of a query question
 TYPE_A      equ      1
 TYPE_CNAME  equ      5
 CLASS_IN    equ      1
-; Calculate the number of bytes required for the dns query message including trailing and leading byte of message string null and dns header
-; and query record trailer
+; Calculate the number of bytes required for the dns query message including trailing and leading byte
+; of message string null and dns header and query record trailer
 create_dns_query_buffer
          moveq    #0,d1
          move.w   d0,d1
          move.w   d0,d6                               ; Save length of string
-         add.w    #dns_qhl+dns_qqt+2+8,d1               ; Two extra bytes for 'label' -> '0x05label0x00', +8 for user heap header block
+; Two extra bytes for 'label' -> '0x05label0x00', +8 for user heap header block
+         add.w    #dns_qhl+dns_qqt+2+8,d1
          move.w   d1,d5                               ; Save total length in d5 where it will be returned to caller
          bsr      allocate_user_heap
          tst.l    d0
@@ -30,7 +36,7 @@ create_dns_query_buffer
 insert_trailer
          move.w   d6,d1                               ; Length of string that was passed in
          lea      dns_qhl(a2),a3
-         bsr      address_to_query_format
+         bsr.s    address_to_query_format
          bne      alloc_fail_release                  ; If conversion failed then release memory and exit with error
 ; N.B. query name is not necessarily word-aligned so we can't use word sized operations in the following
          move.b   #0,(a3)+
@@ -61,9 +67,9 @@ set_header_flags
 ; d0=2 means string to be converted was an illegal dns name, e.g. ".."
 address_to_query_format
          tst.w    d1
-         beq      convert_empty_string
+         beq.s   convert_empty_string
          cmpi.w   #255,d1                             ; Maximum total length of name is 255 bytes says the RFC
-         bhi      convert_name_too_long
+         bhi.s    convert_name_too_long
          move.w   d1,d4
          subq.w   #1,d1                               ; Set up for dbra loop which runs until d1==-1
          movea.l  a4,a1
@@ -71,20 +77,20 @@ address_to_query_format
 cloop
          move.b   (a4)+,d2
          cmpi.b   #'.',d2
-         beq      cloop_end_label
+         beq.s    cloop_end_label
          addq.w   #1,d3
          dbra     d1,cloop
-         bra      clabel_write_label
+         bra.s    clabel_write_label
 cloop_end_label
          cmpi.w   #0,d1                               ; Is this the last character of the address?
-         bne      cloop_test_illegal                  ; If not, test for illegal label preceding this label terminator
+         bne.s    cloop_test_illegal                  ; If not, test for illegal label preceding this label terminator
          cmpi.w   #1,d4                               ; It is last char: was the original length of address == 1
-         beq      convert_add_null_terminator         ; Then we have address '.' which is a valid query, add null and terminate
+         beq.s    convert_add_null_terminator         ; Then we have address '.' which is a valid query, add null and terminate
 cloop_test_illegal
          tst.w    d3                                  ; Check if current label is empty
-         beq      convert_illegal_label               ; '..' in an address is illegal
+         beq.s    convert_illegal_label               ; '..' in an address is illegal
          cmpi.w   #63,d3
-         bhi      convert_illegal_label               ; Max length of a single label is 63 bytes (RFC 1035)
+         bhi.s    convert_illegal_label               ; Max length of a single label is 63 bytes (RFC 1035)
 clabel_write_label
          move.b   d3,(a3)+                            ; Write label length to target
          subq.w   #1,d3
@@ -93,7 +99,7 @@ clabel_loop
          dbra     d3,clabel_loop
          moveq    #0,d3                               ; Reset label length to zero, i.e. begin new label
          tst.w    d1
-         blt      convert_add_null_terminator         ; This was the last label in the address without an ending '.'
+         blt.s    convert_add_null_terminator         ; This was the last label in the address without an ending '.'
          adda.l   #1,a1                               ; Skip over the '.' in source string
          dbra     d1,cloop
 convert_add_null_terminator
@@ -130,10 +136,10 @@ get_ip_from_dns_response
          bne      response_error
          move.w   4(a3),d2                            ; Number of questions
          move.w   6(a3),d3                            ; Number of answers in response
-         beq      response_process_stack
+         beq.s    response_process_stack
          adda.l   #dns_qhl,a3                          ; Skip over the header and start reading answers
 ; while(questions>0)
-         bra      skip_questions_end_test
+         bra.s    skip_questions_end_test
 skip_over_questions
          bsr      skip_over_name
          adda.l   #4,a3                               ; Skip over QTYPE and QCLASS in question
@@ -149,18 +155,17 @@ dns_response_scan_answers
 ; Type of resource
          MWORD    a3,d1
          cmpi.w   #TYPE_A,d1                          ; Looking for an A record
-         bne      answers_check_if_cname
+         bne.s    answers_check_if_cname
          addq.w   #1,d4
          move.w   #TYPE_A,-(a7)                       ; Push resource type
          move.l   a1,-(a7)                            ; Push resource record pointer
-         bra      next_answer
+         bra.s    next_answer
 answers_check_if_cname
          cmpi.w   #TYPE_CNAME,d1
-         bne      next_answer
+         bne.s    next_answer
          addq.w   #1,d5
          move.w   #TYPE_CNAME,-(a7)                       ; Push resource type
          move.l   a1,-(a7)                            ; Push resource record pointer
-         bra      next_answer
 next_answer
 ; skip class (2 octets)
          adda.l   #2,a3
@@ -197,20 +202,20 @@ clear_A_table
          dbra     d1,clear_A_table                    ; Need a terminating NULL long word so we do n+1 iterations
          movea.l  a3,a5                               ; Save it in A5
          add.w    d4,d5                               ; Total of A and CNAME records
-         bra      resp_pop_end_check
+         bra.s    resp_pop_end_check
 resp_pop_resource
          movea.l  #0,a3                               ; a3 used as temp work pointer to resource record
          move.l   (a7)+,a1
          move.w   (a7)+,d1
          cmpi.w   #TYPE_A,d1
-         bne      resp_pop_check_cname
+         bne.s    resp_pop_check_cname
 ; copy name if not yet set in h_name of struct hostent
          tst.l    (a0)                                  ; Is h_name set already set?
-         bne      copy_ip_to_hostent
+         bne.s    copy_ip_to_hostent
          movem.l  d0/a1-a2,-(a7)
          movea.l  a5,a2                                  ; Target location
 ; Already set earlier: a0 = struct hostent, a1 = pointer to start of name
-         bsr      copy_res_name_to_target
+         bsr.s    copy_res_name_to_target
 ; a3 now points to one byte past name in resource
          move.l   a5,(a0)
          movea.l  a2,a5
@@ -223,17 +228,17 @@ find_a_record_slot
 ; Save pointer to ip address in the first empty slot
          move.l   a5,d0
          btst     #0,d0
-         beq      ip_target_word_aligned
+         beq.s    ip_target_word_aligned
          addq.l   #1,d0
          movea.l  d0,a5
 ip_target_word_aligned
          move.l   a5,-(a2)
 ; TODO now just insert dead beef as ip address
          cmpa.l   #0,a3                               ; Do we already have a pointer to res record past the name?
-         bne      find_and_copy_ip_from_rr
+         bne.s    find_and_copy_ip_from_rr
 ; Otherwise skip past name (without following compression) and set a3 to point to one byte past it
          movea.l  a1,a3
-         bsr      skip_over_name
+         bsr.s    skip_over_name
 find_and_copy_ip_from_rr
 ; At this point a3 points to byte following "name" field of resource record
 ; We know that this is an A record so we can just pick the ip address by offset
@@ -242,22 +247,22 @@ find_and_copy_ip_from_rr
          swap     d1
          MWORD    a3,d1
          move.l   d1,(a5)+
-         bra      resp_pop_end_check
+         bra.s    resp_pop_end_check
 resp_pop_check_cname
          cmpi.w   #TYPE_CNAME,d1
-         bne      resp_pop_end_check
+         bne.s    resp_pop_end_check
          move.l   STRUCT_HE_HALIASES(a0),a2
 find_cname_record_slot
          tst.l    (a2)+
          bne      find_cname_record_slot
          move.l   a5,-(a2)
          movea.l  a5,a2
-         bsr      copy_res_name_to_target
+         bsr.s    copy_res_name_to_target
          movea.l  a2,a5
 resp_pop_end_check
          dbra     d5,resp_pop_resource
          tst.w    d6
-         beq      response_error
+         beq.s    response_error
          moveq    #0,d0
          rts
 response_error
@@ -277,12 +282,12 @@ copy_res_name_to_target
 copy_res_name
          moveq    #0,d0
          move.b   (a1)+,d0
-         beq      copy_res_name_done
+         beq.s    copy_res_name_done
          cmpi.b   #$C0,d0
-         bne      copy_res_uncompressed
+         bne.s    copy_res_uncompressed
 ; Deal with compression: next byte is an offset from id field of the response strcuture
          cmpa.l   #0,a3
-         bne      copy_res_compressed
+         bne.s    copy_res_compressed
          lea      1(a1),a3
 copy_res_compressed
          move.b   (a1)+,d0
@@ -307,9 +312,9 @@ copy_res_name_done
 ;
 skip_over_name
          move.b   (a3)+,d0
-         beq      skip_done
+         beq.s    skip_done
          cmpi.b   #63,d0
-         bhi      skip_compression
+         bhi.s    skip_compression
          adda.l   d0,a3
          bra      skip_over_name
 skip_done
@@ -318,10 +323,11 @@ skip_compression
          move.b   d0,d1
          andi.b   #$C0,d1
          cmpi.b   #$C0,d1
-         bne      unknown_compression
+         bne.s    unknown_compression
          adda.l   #1,a3
          moveq    #0,d0
          rts
 unknown_compression
          moveq    #-1,d0
          rts
+         end
