@@ -1,5 +1,13 @@
-         in       dev1_resolv_macros_asm
-         in       dev1_driver_in
+         include  'dev1_driver_in'
+         include  'dev2_qdos1_in'
+         include  'dev2_sms17_in'
+         xref     w5300_init
+         xref     socket_close
+         xref     create_dns_query_buffer
+         xref     socket_open_udp
+         xref     get_ip_from_dns_response
+         xref     read_ip_address
+         section  driver
 ; Get QDOS info to get sysvars address in a0
          moveq    #0,d0
          trap     #1
@@ -12,12 +20,12 @@
          move.l   a6,-(a7)
          movea.l  a0,a6
          move.l   #HEAP_SIZE,d1     ; Number of bytes required for all memory needs of this driver + associated keywords
-         movea.w  MM_ALCHP,a4
+         movea.w  mem.achp,a4
          jsr      (a4)
          movea.l  (a7)+,a6            ; Restore original SuperBasic A6
 ; Return to user mode (== clear bit 13 of status register)
-         andi     #$DFFF,sr
-         bne      oom_exit
+         andi.w   #$DFFF,sr
+         bne.s    oom_exit
 ; On successful return from MM_ALCHP, A0 points to start of allocated area
 ; First 4 bytes of the allocated area contains the size of the heap fragment and should be preserved
 ; Set up the driver linkage (standard version) block
@@ -30,10 +38,10 @@
          lea      close_channel,a2
          move.l   a2,(a1)
          adda.l   #$1C,a0             ; Point to $18 (==link to next driver) past the start of linkage block
-         moveq    #MT_LIOD,d0         ; link in this driver
+         moveq    #MT.LIOD,d0         ; link in this driver
          trap     #1
          tst.b    d0
-         bne      direct_exit
+         bne.s    direct_exit
          suba.l   #$18,a0             ; Reset A0 to point to start of linkage block
          move.l   a0,-(a7)             ; And save it for later
 ; Set up a user heap for temporary storage needs
@@ -43,11 +51,11 @@
          lea      QE_MEM_USER_HEAP(a0),a0    ; Start of user heap area
          move.l   #USER_HEAP_SIZE,d1         ; Number of bytes reserved for the user heap
          suba.l   a6,a0                      ; We need A0 to be A6 relative
-         move.b   #MT_LNKFR,d0               ; Trap code
+         move.b   #MT.LNKFR,d0               ; Trap code
          trap     #1                         ; This trap doesn't report errors
 ; Set up SuperBasic keywords
          lea      KEYWORDS,a1
-         move.w   BP_INIT,a4     ; Vector to link in new procedures and functions
+         move.w   sb.inipr,a4                ; Vector to link in new procedures and functions
          jsr      (a4)
          bsr      w5300_init                 ; Reset and set up the ethernet card
 ; Restore pointer to linkage blck
@@ -77,7 +85,7 @@ reserve_socket
          moveq    #NUM_SOCKETS-1,d0
 reserve_socket_loop
          cmpi.l   #SOCK_RT_STAT_FREE,-(a1)
-         beq      reserve_socket_found
+         beq.s    reserve_socket_found
          dbra     d0,reserve_socket_loop
 reserve_socket_exit
          rts
@@ -90,13 +98,13 @@ reserve_socket_found
 ; d0: number of socket to release
 release_socket
          cmpi.b   #NUM_SOCKETS-1,d0
-         bhi      invalid_socket_number
+         bhi.s    invalid_socket_number
          ext.w    d0
          lsl.w    #2,d0
          lea      QE_MEM_SOCK_RT(a3,d0.w),a1
          move.l   (a1),d1
          cmpa.l   d1,a0
-         bne      illegal_socket_reservation
+         bne.s    illegal_socket_reservation
          move.l   #SOCK_RT_STAT_FREE,(a1)
          moveq    #0,d0
          rts
@@ -119,14 +127,14 @@ find_socket_reservation
          moveq    #NUM_SOCKETS-1,d0
 find_socket_loop
          cmpa.l   -(a1),a0
-         beq      reserved_socket_found
+         beq.s    reserved_socket_found
          dbra     d0,find_socket_loop
          rts            ; D0 == -1
 reserved_socket_found
          rts      ; D0 contains socket number (0-7)
 ;
 open_sck_channel
-         moveq    #IO_OPEN,d0
+         moveq    #IO.OPEN,d0
          moveq    #-1,d1         ; Current job owns the channel
          moveq    #0,d3          ; Regular open
          lea      chan_name_sck,a0
@@ -134,7 +142,7 @@ open_sck_channel
          rts                     ; Return channel id in a0, error code in d0
 ; Parameters: A0 == channel id of SCK_ channel
 close_sck_channel
-         moveq    #IO_CLOSE,d0
+         moveq    #IO.CLOSE,d0
          trap     #2
          rts
 ; get_driver_info: utility routine to ask the w5300 driver where its driver linkage block resides
@@ -148,9 +156,7 @@ get_driver_info
          move.b   #QE_IO_DRV_INFO,d0
          moveq    #-1,d3         ; Timeout
          trap     #3
-         tst.b    d0
-         bne      get_driver_info_exit
-get_driver_info_exit
+; Return whatever exit code the trap returns
          rts
 ;
 ; Allocate user heap
@@ -163,7 +169,7 @@ get_driver_info_exit
 ; Corrupts:
 ; A0-A3, D0-D3
 allocate_user_heap
-         moveq    #MT_ALLOC,d0         ; Trap code
+         moveq    #MT.ALLOC,d0         ; Trap code
          suba.l   a6,a0                ; Make the pointer relative to A6
          trap     #1
          tst.l    d0                   ; Did it work ?
@@ -182,14 +188,14 @@ user_heap_alloc_ok
 ; Corrupts:
 ; A0-A3, D0-D3
 deallocate_user_heap
-         moveq    #MT_LNKFR,d0            ; Trap code
+         moveq    #MT.LNKFR,d0            ; Trap code
          move.l   0(a0),d1                ; Size of block to be released
          suba.l   a6,a0                   ; A0 has to be relative a6
          suba.l   a6,a1                   ; Free space handle also has to be relative A6
          trap     #1                      ; Deallocate the 200 byte area
          rts
 QE_UNLOAD
-         move.b   #IO_SSTRG,d0    ; Write unload notification message on channel #0
+         move.b   #IO.SSTRG,d0    ; Write unload notification message on channel #0
          move.l   #24,d2           ; Length of message
          moveq    #0,d3           ; Timeout == 0
          movea.l  #0,a0           ; channel id of channel 0
@@ -197,11 +203,11 @@ QE_UNLOAD
          trap     #3
          bsr      open_sck_channel
          tst.b    d0
-         bne      unload_exit
+         bne.s    unload_exit
          move.l   a0,-(a7)
          bsr      get_driver_info
          tst.b    d0
-         bne      unload_exit
+         bne.s    unload_exit
          move.l   a1,-(a7)       ; Save the result
 ; Get QDOS info to get sysvars address in a0, sysvars needed in A6 for MM_RECHP
          moveq    #0,d0
@@ -211,14 +217,14 @@ QE_UNLOAD
          movea.l  a0,a6
          movea.l  4(a7),a0
          adda.l   #$18,a0
-         moveq    #MT_RIOD,d0          ; remove link to this driver, preserves a0
+         moveq    #MT.RIOD,d0          ; remove link to this driver, preserves a0
          trap     #1
          suba.l   #$1C,a0              ; Move pointer to start of heap allocation block
          trap     #0                   ; Release heap needs to be called in supervisor mode
-         movea.w  MM_RECHP,a4
+         movea.w  mem.rchp,a4
          jsr      (a4)
 ; Return to user mode (== clear bit 13 of status register)
-         andi     #$DFFF,sr
+         andi.w   #$DFFF,sr
 ; Reset a6 to original value
          movea.l  (a7),a6
          adda.l   #8,a7                ; remove sysvars + driver block pointer from stack
@@ -237,26 +243,26 @@ NSLOOKUP
 ; Check that the function was called with one parameter
          lea      8(a3),a0
          cmpa.l   a0,a5
-         beq      nslookup_num_params_ok
+         beq.s    nslookup_num_params_ok
          moveq    #ERR_BP,d0
          rts
 nslookup_num_params_ok
-         movea.w  CA_GTSTR,a4
+         movea.w  sb.gtstr,a4
          jsr      (a4)
          tst.l    d0
-         beq      nslookup_string_param_ok
+         beq.s    nslookup_string_param_ok
          moveq    #ERR_BP,d0
          rts
 nslookup_string_param_ok
 ; Verify that the name is not longer than the maximum length of 254 characters == 255 octets DNS label encoded
          move.w   0(a6,a1.l),d2  ; Length of string
          cmpi.w   #DNS_MAX_NAME_LEN,d2
-         bls      nslookup_check_null_name
+         bls.s    nslookup_check_null_name
          moveq    #ERR_BP,d0
          rts
 nslookup_check_null_name
          tst.w    d2
-         bne      nslookup_param_ok       ; Don't accept an empty string
+         bne.s    nslookup_param_ok       ; Don't accept an empty string
          moveq    #ERR_BP,d0
          rts
 nslookup_param_ok
@@ -267,7 +273,7 @@ nslookup_param_ok
 ; Open SCK_ channel to get driver info and netdb access
          bsr      open_sck_channel
          tst.b    d0
-         beq      nslookup_get_driver_info
+         beq.s    nslookup_get_driver_info
          unlk     a5
          moveq    #ERR_NF,d0
          rts
@@ -275,7 +281,7 @@ nslookup_get_driver_info
          move.l   a0,NSL_SCK_CHANNEL(a5)
          bsr      get_driver_info            ; Set A1 = pointer to driver linkage block
          tst.b    d0
-         beq      nslookup_driver_info_ok
+         beq.s    nslookup_driver_info_ok
          move.b   #ERR_NF,-(a7)
          bra      exit_close_sck
 nslookup_driver_info_ok
@@ -289,7 +295,7 @@ nslookup_driver_info_ok
          bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
-         beq      allocate_struct_hostent_buffer
+         beq.s    allocate_struct_hostent_buffer
          move.b   #ERR_OM,-(a7)
          bra      exit_close_sck
 allocate_struct_hostent_buffer
@@ -301,7 +307,7 @@ allocate_struct_hostent_buffer
          bsr      allocate_user_heap                           ; A1 = ptr to driver linkage block, d1 = required size
 ; A0 now contains pointer to start of allocated block if return status == 0
          tst.b    d0
-         beq      copy_hostname_to_temp_buffer
+         beq.s    copy_hostname_to_temp_buffer
 ; struct hostent allocation failed, clean up and exit
 ; Unallocate temp hostname buffer
          move.b   #ERR_OM,-(a7)
@@ -332,13 +338,13 @@ nslookup_name_copy_loop
          adda.l   #8,a2                      ; Skip over heap block book keeping info
          trap     #3
          move.b   d0,-(a7)                   ; Save exit status
-         bne      nslookup_exit_deallocate
+         bne.s    nslookup_exit_deallocate
 ; Call succeeded, 
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
          clr.l    d2
          move.w   NSL_W_NAMELEN(a5),d2
          btst     #0,d2
-         beq      nslookup_update_math_stack
+         beq.s    nslookup_update_math_stack
          addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
 nslookup_update_math_stack
          addq.b   #2,d2          ; Account for the string length word on the stack
@@ -357,13 +363,13 @@ nslookup_update_math_stack
          move.w   d0,d1
          move.w   d0,d4          ; Save original
          btst     #0,d1
-         beq      ipstrlen_even
+         beq.s    ipstrlen_even
          addq.l   #1,d1
 ipstrlen_even
          addq.l   #2,d1          ; Space for length word
          move.l   d1,d5          ; Save stack allocation length, d1 is corrupted (on Minerva) when calling BV_CHRIX
          move.l   BV_RIP(a6),a1
-         move.w   BV_CHRIX,a4    ; Vector to make sure required space is available on the maths stack, d1==required bytes
+         move.w   qa.resri,a4    ; Vector to make sure required space is available on the maths stack, d1==required bytes
          jsr      (a4)           ; No error status is returned on QDOS!
          move.l   BV_RIP(a6),a1  ; Load maths stack head pointer
          suba.l   d5,a1
@@ -396,7 +402,7 @@ exit_close_sck
 exit_pop_and_unlink
          clr.l    d0
          move.b   (a7)+,d0
-         bne      exit_unlink
+         bne.s    exit_unlink
          moveq    #1,d4                         ; Return a string
 exit_unlink
          ext.w    d0
@@ -408,20 +414,20 @@ open_channel
          movea.l  a0,a2
          move.w   (a2)+,d1
          cmpi.w   #4,d1
-         bcs      notme   
+         bcs.s    notme   
          move.l   (a2)+,d2
          and.l    #$dfdfdfff,d2     ; Uppercase the first three characters
          cmpi.l   #'SCK_',d2
-         bne      notme
+         bne.s    notme
 ; reserve space for the channel definition block
 ; save A0 in case memory allocation fails
          move.l   a0,-(a7)
          move.l   #$80,d1
 ; A6 already points to sysvars when handling a trap #3
 ; Also, we are already in supervisor mode, which is a prerequisite for MM_ALCHP
-         movea.w  MM_ALCHP,a4
+         movea.w  mem.achp,a4
          jsr      (a4)
-         bne      open_channel_fail
+         bne.s    open_channel_fail
          adda.l   #4,a7             ; purge saved a0 from stack
 ; a0 contains pointer to allocated channel definition block with $0(a0).w containing length of definition block
 ;
@@ -436,8 +442,8 @@ open_channel_fail
          movea.l  (a7)+,a0
          rts
 close_channel
-         bsr      release_and_close_sockets
-         movea.w  MM_RECHP,a4
+         bsr.s    release_and_close_sockets
+         movea.w  mem.rchp,a4
          jsr      (a4)
          rts
 ; a0 = chan def block
@@ -445,7 +451,7 @@ close_channel
 release_and_close_sockets
          bsr      find_socket_reservation
          cmpi.b   #-1,d0
-         beq      release_and_close_end
+         beq.s    release_and_close_end
          bsr      socket_close
          bsr      release_socket
          bra      release_and_close_sockets
@@ -455,9 +461,9 @@ release_and_close_end
 channel_IO
          lea      CHAN_LOCAL_VARS(a0),a5
          cmpi.b   #0,d3                      ; D3==0 if first call, D3==-1 if re-entering a not-complete call
-         beq      channel_IO_check_timedout
+         beq.s    channel_IO_check_timedout
          cmpi.l   #0,CHAN_CONT_ADDR(a0)      ; Check if the chan def block contains a continuation address
-         beq      channel_IO_check_operation ; If it was 0 then we don't have a continuation address
+         beq.s    channel_IO_check_operation ; If it was 0 then we don't have a continuation address
          movea.l  CHAN_REG_STORE(a0),a2      ; Restore A2 (TODO: set of registers)
          move.l   CHAN_REG_STORE+4(a0),d1    ; Return address to push on to the stack
          move.l   d1,-(a7)
@@ -469,15 +475,15 @@ channel_IO_check_timedout
 ; Check if a previous operation timed out and left a continuation
 ; If so, cleanup resources associated with the previous call
          cmpi.l   #0,CHAN_CONT_ADDR(a0)
-         beq      channel_IO_check_operation ; No continuation, nothing to clean up
+         beq.s    channel_IO_check_operation ; No continuation, nothing to clean up
 ; Clean up previous call's resources
 ; Check if there are sockets reserved for this channel (a0 points to chan def block)
          bsr      release_and_close_sockets
 channel_IO_check_operation
          cmpi.b   #QE_IO_DRV_INFO,d0
-         beq      driver_info
+         beq.s    driver_info
          cmpi.b   #IP_GETHOSTBYNAME,d0
-         beq      ip_gethostbyname_impl
+         beq.s    ip_gethostbyname_impl
          cmpi.b   #IP_INET_ATON,d0
          beq      ip_inet_aton_impl
          cmpi.b   #IP_INET_NTOA,d0
@@ -503,8 +509,8 @@ driver_info
 ;   A0 = (chanid_t) channel ID
 ;   A1 = void *) buffer address
 ;   A2 = parameter block (2 long words)
-;      params[0] = (struct sockaddr*) to
-;      params[1] = (int) tolen;
+;      params0 = (struct sockaddr*) to
+;      params1 = (int) tolen;
 ;
 ;
 ;   Output
@@ -551,7 +557,7 @@ ip_gethostbyname_impl
          lea      STRUCT_HE_HADDRLIST(a2),a2
          bsr      ip_inet_aton_impl                ; Returns ip address in d7 if successful
          tst.b    d0
-         bne      lookup_hostname
+         bne.s    lookup_hostname
          movea.l  IO_HOSTNAME_PTR(a5),a1
          movea.l  IO_STRUCT_HE_PTR(a5),a2
          bsr      hostent_init
@@ -577,17 +583,17 @@ lookup_hostname
          bsr      create_dns_query_buffer
          move.l   a2,IO_DNS_QUERY_BUF_PTR(a5)
          tst.b    d0
-         bne      create_dummy_response
+         bne.s    create_dummy_response
 ; Open a UDP socket for the query
          move.w   IO_SOCK_NUM(a5),d0
          movea.l  IO_CHANDB(a5),a0
          bsr      socket_open_udp
          tst.b    d0
-         beq      release_query_block
+         beq.s    release_query_block
          cmpi.b   #ERR_NC,d0
-         bne      release_query_block
+         bne.s    release_query_block
          move.l   a1,CHAN_CONT_ADDR(a0)
-         bra      lookup_hostname_exit
+         bra.s    lookup_hostname_exit
 ; Release the DNS query heap block
 release_query_block
          movea.l  IO_DNS_QUERY_BUF_PTR(a5),a0
@@ -598,7 +604,7 @@ release_query_block
 create_dummy_response
          movea.l  IO_HOSTNAME_PTR(a5),a1
          movea.l  IO_STRUCT_HE_PTR(a5),a2
-         bsr      hostent_init
+         bsr.s    hostent_init
          lea      DNS_DUMMY_RESPONSE,a3
          movea.l  a2,a0                      ; a0 now points to struct hostent
          move.l   a5,-(a7)                   ; Save frame pointer
@@ -629,11 +635,11 @@ hostent_init
          move.l   a2,-(a7)
          movea.l  a3,a2
          move.w   #DNS_MAX_NAME_LEN,d0
-         bsr      strncpy
+         bsr.s    strncpy
          move.l   a2,d1                         ; On return, A2 points at one byte past the string terminating null byte
          move.l   (a7)+,a2                      ; Restore pointer to struct hostent
          btst     #0,d1
-         beq      hostent_init_set_haddrlist
+         beq.s    hostent_init_set_haddrlist
          addq.l   #1,d1
 hostent_init_set_haddrlist
          move.l   d1,STRUCT_HE_HADDRLIST(a2)
@@ -668,7 +674,7 @@ hostent_set_single_ip
 ;     D0.w  number of bytes copied (excluding terminating null)
 strncpy
          cmp.w    #0,d0
-         bhi      strncpy_maxlen_ok
+         bhi.s    strncpy_maxlen_ok
          move.b   #0,(a2)+
          rts
 strncpy_maxlen_ok
@@ -678,7 +684,7 @@ strncpy_copy_loop
          addq.w   #1,d2
          move.b   (a1)+,d1
          move.b   d1,(a2)+
-         beq      strncpy_string_end
+         beq.s    strncpy_string_end
          dbra     d0,strncpy_copy_loop
          move.b   #0,(a2)+
 strncpy_string_end
@@ -692,7 +698,7 @@ strlen
          moveq    #0,d0
 strlen_loop
          move.b   (a0)+,d1
-         beq      strlen_exit
+         beq.s    strlen_exit
          addq.w   #1,d0
          bra      strlen_loop
 strlen_exit
@@ -743,22 +749,22 @@ ip_inet_ntoa_impl
          move.l   a0,-(a7)             ; Need to preserve channel id
          move.l   (a1),d0
          movea.l  a2,a0
-         bsr      long_to_ip_string
+         bsr.s    long_to_ip_string
          movea.l  (a7)+,a0
          moveq    #0,d0
          rts
 long_to_ip_string
          rol.l   #8,d0
-         bsr     byte_to_string
+         bsr.s   byte_to_string
          move.b  #'.',(a0)+
          rol.l   #8,d0
-         bsr     byte_to_string
+         bsr.s   byte_to_string
          move.b  #'.',(a0)+
          rol.l   #8,d0
-         bsr     byte_to_string
+         bsr.s   byte_to_string
          move.b  #'.',(a0)+
          rol.l   #8,d0
-         bsr     byte_to_string
+         bsr.s   byte_to_string
          move.b  #0,(a0)+
          rts
 byte_to_string
@@ -767,7 +773,7 @@ byte_to_string
          move.b  d0,d1
          divu    #100,d1
          tst.w   d1
-         beq     byte_to_string_handle_tens
+         beq.s   byte_to_string_handle_tens
          add.b   #$30,d1
          move.b  d1,(a0)+
          moveq   #1,d2           ; Flag to tell we have hundreds
@@ -776,9 +782,9 @@ byte_to_string_handle_tens
          swap    d1              ; Remainder to lower word
          divu    #10,d1
          tst.b   d2
-         bne     byte_to_string_have_hundreds   ; There are non-zero hundreds so we can print a potential zero
+         bne.s   byte_to_string_have_hundreds   ; There are non-zero hundreds so we can print a potential zero
          tst.w   d1
-         beq     byte_to_string_handle_ones
+         beq.s   byte_to_string_handle_ones
 byte_to_string_have_hundreds
          add.b   #$30,d1
          move.b  d1,(a0)+
@@ -787,11 +793,6 @@ byte_to_string_handle_ones
          add.b   #$30,d1
          move.b  d1,(a0)+
          rts
-; Insert parser utility functions
-         in       dev1_parser_asm
-         in       dev1_resolv_asm
-; Insert W5300 code
-         in       dev1_w5300_asm
 KEYWORDS dc.w     2             ; No of procedures we are linking in
          dc.w     QE_UNLOAD-*   ; Pointer to code of first procedure
          dc.b     9,'QE_UNLOAD' ; Name of first procedure
@@ -809,3 +810,4 @@ DNS_DUMMY_RESPONSE
          dc.l     $752d7765,$73742d31,$03656c62,$09616d61,$7a6f6e61,$77730363,$6f6d00c0,$67000100
          dc.l     $01000000,$3b000436,$f6c85fc0,$67000100,$01000000,$3b000436
          dc.b     $ab,$e1,$bf
+         end
