@@ -1,4 +1,7 @@
          section  resolver
+         xdef     create_dns_query_buffer
+         xdef     get_ip_from_dns_response
+;
          xref     allocate_user_heap
          xref     deallocate_user_heap
          include  'dev1_resolv_macros_in'

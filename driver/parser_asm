@@ -1,4 +1,5 @@
          section parser
+         xdef     read_ip_address
 ; On entry from driver:
 ; a1 points to driver name (with no length word at beginning, fixed length of 3 bytes)
 ; a2 points to string passed to driver in open call, e.g. "udp_127.0.0.1:80" preceded

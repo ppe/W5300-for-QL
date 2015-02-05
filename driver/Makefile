@@ -1,6 +1,7 @@
 MAC = qmac
 MACFLAGS = -nowinds
 driver: w5300_rel resolv_rel parser_rel driver_rel
+	qlink -with driver_link -nowinds
 _in:
 
 _asm_rel:

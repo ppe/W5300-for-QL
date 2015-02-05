@@ -1,6 +1,9 @@
          include  'dev1_driver_in'
          include  'dev2_qdos1_in'
          include  'dev2_sms17_in'
+         xdef     allocate_user_heap
+         xdef     deallocate_user_heap
+;
          xref     w5300_init
          xref     socket_close
          xref     create_dns_query_buffer
