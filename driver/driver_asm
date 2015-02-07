@@ -6,6 +6,7 @@
 ;
          xref     w5300_init
          xref     socket_close
+         xref     socket_set_dest
          xref     create_dns_query_buffer
          xref     socket_open_udp
          xref     get_ip_from_dns_response
@@ -531,8 +532,9 @@ ip_sendto_impl
          movea.l  (a2),a4                 ; a4 == pointer to struct sockaddr
          move.l   4(a2),d4                ; Length of struct sockaddr
 ; TODO Check that address family == AF_INET
-         move.l   STRUCT_SA_DPORT(a4),d5                ; Destination port
-         move.l   STRUCT_SA_DIP(a4),d6                  ; Destination ip
+         move.l   STRUCT_SA_DIP(a4),d2                  ; Destination ip
+         move.l   STRUCT_SA_DPORT(a4),d3                ; Destination port
+         bsr      socket_set_dest
          rts
 ;
 ; Provides gethostbyname(2) functionality

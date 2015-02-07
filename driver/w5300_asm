@@ -4,6 +4,7 @@
          xdef     w5300_init
          xdef     socket_open_udp
          xdef     socket_close
+         xdef     socket_set_dest
          section  w5300
 w5300_init
          movea.l  #iobase,a1        ; A1 points to beginning of memory mapped IO space into W5300
@@ -147,6 +148,22 @@ udp_open_ok
 socket_not_closed_err
          moveq    #-2,d0
          rts
+;
+; Set destination for socket
+; Parameters:
+;  d1.b = socket #
+;  d2.l = destination ip
+;  d3.q = destination port
+; Corrupts:
+;  a2
+;
+socket_set_dest
+         bsr.s    sr_base        ; a2 = base address of socket registers
+         move.l   d2,S_DIPR(a2)
+         move.w   d3,S_DPORTR(a2)
+         rts
+;
+;
 ; Subroutine to get socket state, socket register base address passed in a2
 ; Returns current socket state in d0
 s_getst  move.w   S_SSR(a2),d0
