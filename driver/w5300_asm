@@ -5,6 +5,7 @@
          xdef     socket_open_udp
          xdef     socket_close
          xdef     socket_set_dest
+         xdef     socket_write_bytes
          section  w5300
 w5300_init
          movea.l  #iobase,a1        ; A1 points to beginning of memory mapped IO space into W5300
@@ -94,7 +95,7 @@ s_clsd   moveq    #err.ichn,d0                     ; -6 = invalid channel id
 ;  a2
 socket_close
          ext.w    d0
-         bsr.s    sr_base                       ; a2 <= base address of socket n registers
+         bsr      sr_base                       ; a2 <= base address of socket n registers
          move.b   #SC_OPEN,S_CR1(a2)
          rts
 ;
@@ -111,7 +112,7 @@ socket_open_udp
 ; Check that the socket is currently in SOCK_CLOSED state
          ext.w    d0
          move.w   d0,d1
-         bsr.s    sr_base                       ; a2 <= base address of socket n registers
+         bsr      sr_base                       ; a2 <= base address of socket n registers
          move.b   S_SSR1(a2),d2
          cmpi.b   #SS_CLSD,d2
          bne.s    socket_not_closed_err
@@ -163,6 +164,35 @@ socket_set_dest
          move.w   d3,S_DPORTR(a2)
          rts
 ;
+; Write bytes to a socket
+; Parameters:
+;  d1.b = socket #
+;  d2.w = number of bytes to write
+;  a1 = pointer to buffer of bytes to write
+; Returns:
+;  d0.w = number of bytes written
+;
+socket_write_bytes
+; N.B we can't know if the buffer is aligned on a word boundary!
+         bsr.s    sr_base                       ; a2 := socket register base
+         move.l   a1,d7
+         btst     #0,d7
+         beq.s    write_word_aligned            ; Buffer is word-aligned
+; Write from a non-aligned buffer using bytes-sized operations
+         subq.w   #1,d2
+write_byte_sized_loop
+         move.b   (a1)+,S_TXFIFO(a2)
+         move.b   (a1)+,S_TXFIFO+1(a2)
+         dbra     d2,write_byte_sized_loop
+         rts
+write_word_aligned
+         asr.w    #1,d2
+         bcs.s    w_wloop
+         subq.w   #1,d2
+w_wloop  move.w   (a3)+,S_TXFIFO(a2)
+         dbf      d2,w_wloop
+         rts
+;
 ;
 ; Subroutine to get socket state, socket register base address passed in a2
 ; Returns current socket state in d0
@@ -208,14 +238,5 @@ wrb_odd  bsr      sr_base
          movea.l  a1,a3
 w_rdloop move.w   S_RXFIFO(a2),(a3)+
          dbf      d2,w_rdloop
-         rts
-;
-w_wrbuf  asr.w    #1,d2
-         bcs.s    wwb_odd
-         subq.w   #1,d2
-wwb_odd  bsr      sr_base
-         movea.l  a1,a3
-w_wloop  move.w   (a3)+,S_TXFIFO(a2)
-         dbf      d2,w_wloop
          rts
          end
