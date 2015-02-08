@@ -67,6 +67,7 @@ S_PROTOR equ      $1B               ; Socket protocol number register
 S_TOSR   equ      $1C               ; Socket TOS register
 S_TTLR   equ      $1E               ; Socket TTL register
 S_TX_WS  equ      $20               ; Socket TX write size register
+S_TX_WS2 equ      $22               ; Socket TX write size register
 S_TX_FSR equ      $24               ; Socket TX free size register
 S_RXRSR  equ      $28               ; Socket RX receive size register
 S_RXRSR2 equ      $2A               ; Socket RX receive size register 2nd word
@@ -81,6 +82,7 @@ S_MR_UDP equ      2                 ; UDP protocol for socket mode register
 ; Socket commands
 SC_OPEN  equ      1
 SC_CONN  equ      4
+SC_SEND  equ 		$20
 ; Socket states
 SS_CLSD  equ      0                 ; SOCK_CLOSED state
 SS_INIT  equ      $13               ; SOCK_INIT state

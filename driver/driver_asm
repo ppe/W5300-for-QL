@@ -5,9 +5,8 @@
          xdef     deallocate_user_heap
 ;
          xref     w5300_init
+         xref     w5300_sendto_impl
          xref     socket_close
-         xref     socket_set_dest
-         xref     socket_write_bytes
          xref     create_dns_query_buffer
          xref     socket_open_udp
          xref     get_ip_from_dns_response
@@ -485,6 +484,7 @@ channel_IO_check_timedout
 ; Check if there are sockets reserved for this channel (a0 points to chan def block)
          bsr      release_and_close_sockets
 channel_IO_check_operation
+; TODO Consider changing this into a vectored dispatch table
          cmpi.b   #QE_IO_DRV_INFO,d0
          beq.s    driver_info
          cmpi.b   #IP_GETHOSTBYNAME,d0
@@ -538,8 +538,7 @@ ip_sendto_impl
          move.l   STRUCT_SA_DIP(a4),d2                  ; Destination ip
          move.l   STRUCT_SA_DPORT(a4),d3                ; Destination port
 ; TODO socket # needs to be in d1 for these calls
-         bsr      socket_set_dest
-         bsr      socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
+         bsr      w5300_sendto_impl
          rts
 ;
 ; Provides gethostbyname(2) functionality

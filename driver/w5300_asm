@@ -2,10 +2,9 @@
          include  dev1_driver_in
          include  dev2_SMS1_in
          xdef     w5300_init
+         xdef     w5300_sendto_impl
          xdef     socket_open_udp
          xdef     socket_close
-         xdef     socket_set_dest
-         xdef     socket_write_bytes
          section  w5300
 w5300_init
          movea.l  #iobase,a1        ; A1 points to beginning of memory mapped IO space into W5300
@@ -148,6 +147,21 @@ udp_open_ok
          rts
 socket_not_closed_err
          moveq    #-2,d0
+         rts
+;
+; Parameters:
+;  d0.w = # of bytes to write
+;  d1.b = socket #
+;  d2.l = destination ip
+;  d3.w = destination port
+;  a1 = buffer address
+;
+w5300_sendto_impl
+         bsr.s    sr_base                                ; a2 := socket memory address base
+         bsr      socket_set_dest
+         bsr      socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
+         move.w   d0,S_TX_WS2(a2)
+         move.b   #SC_SEND,S_CR1(a2)
          rts
 ;
 ; Set destination for socket
