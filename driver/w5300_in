@@ -54,6 +54,7 @@ S_CR0    equ      $02               ; Socket command register low byte (reserved
 S_CR1    equ      $03               ; Socket command register high byte
 S_IMR    equ      $04               ; Socket interrupt mask register
 S_IR     equ      $06               ; Socket interrupt register
+S_IR1    equ      $07               ; Socket interrupt register (high byte, actual working bits)
 S_SSR    equ      $08               ; Socket status register (word)
 S_SSR0   equ      $08               ; Socket status register (low byte, reserved)
 S_SSR1   equ      $09               ; Socket status register (high byte)
@@ -75,10 +76,12 @@ S_FRAGR  equ      $2C               ; Socket FLAG register
 S_TXFIFO equ      $2E               ; Socket TX FIFO register
 S_RXFIFO equ      $30               ; Socket RX FIFO register
 ; Register manipulation bits
-MR_RST   equ      $80               ; Mode register reset
-S_MR_PM  equ      $FFF0             ; Mask for resetting the socket mode register protocol bits
-S_MR_TCP equ      1                 ; TCP protocol for socket mode register
-S_MR_UDP equ      2                 ; UDP protocol for socket mode register
+MR_RST         equ      $80               ; Mode register reset
+S_MR_PM        equ      $FFF0             ; Mask for resetting the socket mode register protocol bits
+S_MR_TCP       equ      1                 ; TCP protocol for socket mode register
+S_MR_UDP       equ      2                 ; UDP protocol for socket mode register
+S_IR_TIMEOUT   equ      $08
+S_IR_SENDOK    equ      $10               ; IR Send OK flag
 ; Socket commands
 SC_OPEN  equ      1
 SC_CONN  equ      4

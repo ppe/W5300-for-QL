@@ -149,19 +149,41 @@ socket_not_closed_err
          moveq    #-2,d0
          rts
 ;
+; W5300 implementation of sendto
 ; Parameters:
 ;  d0.w = # of bytes to write
 ;  d1.b = socket #
 ;  d2.l = destination ip
 ;  d3.w = destination port
 ;  a1 = buffer address
+; Returns:
+;  d0.w = # of bytes written
 ;
 w5300_sendto_impl
-         bsr.s    sr_base                                ; a2 := socket memory address base
-         bsr      socket_set_dest
-         bsr      socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
+         bsr      sr_base                                ; a2 := socket memory address base
+         bsr.s    socket_set_dest
+         bsr.s    socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
          move.w   d0,S_TX_WS2(a2)
          move.b   #SC_SEND,S_CR1(a2)
+         move.w   #60000,d1                              ; d1 = loop counter to wait for SENDOK before returning ERR_NC
+sendto_wait_sendok
+         move.b   S_IR1(a2),d0
+         andi.b   #S_IR_SENDOK,d0
+         beq.s    sendto_sendok
+         cmp.b    #SS_CLSD,S_SSR1(a2)
+         beq.s    sendto_sock_closed
+         move.b   S_IR1(a2),d0
+         andi.b   #S_IR_TIMEOUT,d0
+         bne.s    sendto_sock_closed
+         dbra     d1,sendto_wait_sendok
+; TODO handle ERR_NC continuation
+         rts
+sendto_sendok
+         and.b    #S_IR_SENDOK,S_IR1(a2)
+         rts
+sendto_sock_closed
+         and.b    #S_IR_TIMEOUT,S_SSR1(a2)
+         moveq    #0,d0
          rts
 ;
 ; Set destination for socket
