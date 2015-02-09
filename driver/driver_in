@@ -14,6 +14,7 @@ IP_MAX_STRINGLEN     equ      16          ; Max length of null-terminated ip add
 NUM_SOCKETS          equ      8           ; Total of 8 sockets on the card
 SOCK_RT_STAT_FREE    equ      $FFFFFFFF   ; Reservation table entry to signify that a socket is not reserved
 ; Netdb functions: d0 values for trap #3 calls
+IP_SENDTO            equ      $52
 IP_GETHOSTBYNAME     equ      $5E
 IP_INET_ATON         equ      $72
 IP_INET_NTOA         equ      $75
@@ -24,6 +25,7 @@ CHAN_REG_STORE       equ      $64         ; Drv def block offset to register sto
 IO_CHANDB            equ      8           ; Frame pointer offset to channel definition block in Channel IO frame
 IO_DRVDB             equ      4           ; Frame pointer offset to driver definition block in Channel IO frame
 IO_SYSVARS           equ      0           ; Frame pointer offset to system variables in Channel IO frame
+IO_BUFFER            equ      12          ; Pointer to string buffer (ip_sendto)
 IO_HOSTNAME_PTR      equ      12          ; Frame pointer offset to pointer to host name
 IO_STRUCT_HE_PTR     equ      16          ; Frame pointer offset to pointer to struct hostent
 IO_SOCK_NUM          equ      20          ; Word size

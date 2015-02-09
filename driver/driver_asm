@@ -440,17 +440,10 @@ open_channel
          cmpi.l   #'SCK_',d2
          beq.s    open_channel_alloc_mem
          cmpi.l   #'UDP_',d2
-         bne.s    notme
-; Reserve a socket and set it up on W5300
-         bsr      reserve_socket
-         tst.b    d0
-         blt.s    open_chan_sock_alloc_fail     ; d0 < 0 == allocation failed, else sock #
-open_channel_open_socket
-         move.b   d0,d1
-         bsr      new_source_port               ; d0 <= source port
-         move.b   #SOCK_MODE_UDP,d2
-         bsr      w5300_socket
+         beq.s    open_channel_alloc_mem
+         bra.s    notme
 open_channel_alloc_mem
+         move.l   d2,d6             ; Save channel name
 ; reserve space for the channel definition block
 ; save A0 in case memory allocation fails
          move.l   a0,-(a7)
@@ -462,9 +455,21 @@ open_channel_alloc_mem
          bne.s    open_channel_fail
          adda.l   #4,a7             ; purge saved a0 from stack
 ; a0 contains pointer to allocated channel definition block with $0(a0).w containing length of definition block
-;
+         cmpi.l   #'SCK_',d6        ; For netdb access, don't reserve a socket
+         beq.s    open_chan_block_init
+; Reserve a socket and set it up on W5300
+         bsr      reserve_socket
+         tst.b    d0
+         blt.s    open_chan_sock_alloc_fail     ; d0 < 0 == allocation failed, else sock #
+open_channel_open_socket
+         move.b   d0,d1
+         bsr      new_source_port               ; d0 <= source port
+         move.b   #SOCK_MODE_UDP,d2
+         bsr      w5300_socket
 ; Initialize driver-specific storage in channel def block
+open_chan_block_init
          move.l   #0,CHAN_CONT_ADDR(a0)   ; Clear continuation address
+         moveq    #0,d0
          rts
 notme
          moveq    #-7,d0            ; "not found" == driver name does not match
@@ -474,6 +479,7 @@ open_chan_sock_alloc_fail
          rts
 ;
 open_channel_fail
+         moveq    #ERR.OM,d0
          movea.l  (a7)+,a0
          rts
 close_channel
@@ -524,6 +530,8 @@ channel_IO_check_operation
          beq      ip_inet_aton_impl
          cmpi.b   #IP_INET_NTOA,d0
          beq      ip_inet_ntoa_impl
+         cmpi.b   #IP_SENDTO,d0
+         beq.s    ip_sendto_impl
          moveq    #0,d0
          rts
 driver_info
@@ -559,17 +567,26 @@ ip_sendto_impl
 ; TODO Check if buffer size > 0 && valid destination && port != 0
 ; TODO Check that buffer size <= memory size for socket
          lea      CHAN_LOCAL_VARS(a0),a5
-         move.l   d2,d0                   ; Number of bytes to write
          move.l   a0,IO_CHANDB(a5)
+         move.l   a1,IO_BUFFER(a5)
          move.l   a3,IO_DRVDB(a5)
          move.l   a6,IO_SYSVARS(a5)
          movea.l  (a2),a4                 ; a4 == pointer to struct sockaddr
          move.l   4(a2),d4                ; Length of struct sockaddr
 ; TODO Check that address family == AF_INET
-         move.l   STRUCT_SA_DIP(a4),d2                  ; Destination ip
-         move.l   STRUCT_SA_DPORT(a4),d3                ; Destination port
-; TODO socket # needs to be in d1 for these calls
+         bsr      find_socket_reservation
+         tst.b    d0
+         blt.s    ip_sendto_no_socket
+         move.l   d0,d1                   ; Socket number
+         move.l   d2,d0                   ; Number of bytes to write
+         move.l   STRUCT_SA_DIP(a4),d2    ; Destination ip
+         move.w   STRUCT_SA_DPORT(a4),d3  ; Destination port
+         move.l   IO_BUFFER(a5),a1
          bsr      w5300_sendto_impl
+         rts                              ; Return number of bytes written in d0
+ip_sendto_no_socket
+; TODO proper error code
+         moveq    #-1,d0
          rts
 ;
 ; Provides gethostbyname(2) functionality
@@ -768,6 +785,7 @@ ip_inet_aton_impl
          move.w   d0,d4
          bsr      read_ip_address
          movea.l  (a7)+,a0
+         move.l   d7,(a2)
          rts
 ;
 ;IP_INET_NTOA
