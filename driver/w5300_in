@@ -49,6 +49,7 @@ S6_BASE  equ      $380              ; Base address for socket 6 addressing
 S7_BASE  equ      $3C0              ; Base address for socket 7 addressing
 ; Socket register offsets
 S_MR     equ      $00               ; Socket mode register
+S_MR1    equ      $01               ; Socket mode register high byte
 S_CR     equ      $02               ; Socket command register
 S_CR0    equ      $02               ; Socket command register low byte (reserved)
 S_CR1    equ      $03               ; Socket command register high byte
@@ -77,7 +78,7 @@ S_TXFIFO equ      $2E               ; Socket TX FIFO register
 S_RXFIFO equ      $30               ; Socket RX FIFO register
 ; Register manipulation bits
 MR_RST         equ      $80               ; Mode register reset
-S_MR_PM        equ      $FFF0             ; Mask for resetting the socket mode register protocol bits
+S_MR_PM        equ      $F0               ; Mask for resetting the socket mode register protocol bits
 S_MR_TCP       equ      1                 ; TCP protocol for socket mode register
 S_MR_UDP       equ      2                 ; UDP protocol for socket mode register
 S_IR_TIMEOUT   equ      $08

@@ -5,6 +5,7 @@
          xdef     deallocate_user_heap
 ;
          xref     w5300_init
+         xref     w5300_socket
          xref     w5300_sendto_impl
          xref     socket_close
          xref     create_dns_query_buffer
@@ -414,6 +415,21 @@ exit_unlink
          unlk     a5
          rts
 ;
+; Allocate a new source port number for a socket
+; Parameters:
+;  d1.b = socket #
+;  a0 = driver definition block
+;  a6 = sysvars
+; Returns:
+;  d0.w = source port number
+;
+new_source_port
+         ext.w    d1
+         move.w   SV_RAND(a6),d0
+         lsl.w    #3,d0
+         add.w    d1,d0
+         rts
+;
 open_channel
          movea.l  a0,a2
          move.w   (a2)+,d1
@@ -422,7 +438,19 @@ open_channel
          move.l   (a2)+,d2
          and.l    #$dfdfdfff,d2     ; Uppercase the first three characters
          cmpi.l   #'SCK_',d2
+         beq.s    open_channel_alloc_mem
+         cmpi.l   #'UDP_',d2
          bne.s    notme
+; Reserve a socket and set it up on W5300
+         bsr      reserve_socket
+         tst.b    d0
+         blt.s    open_chan_sock_alloc_fail     ; d0 < 0 == allocation failed, else sock #
+open_channel_open_socket
+         move.b   d0,d1
+         bsr      new_source_port               ; d0 <= source port
+         move.b   #SOCK_MODE_UDP,d2
+         bsr      w5300_socket
+open_channel_alloc_mem
 ; reserve space for the channel definition block
 ; save A0 in case memory allocation fails
          move.l   a0,-(a7)
@@ -440,6 +468,9 @@ open_channel
          rts
 notme
          moveq    #-7,d0            ; "not found" == driver name does not match
+         rts
+open_chan_sock_alloc_fail
+         moveq    #ERR.IU,d0        ; "In use" == can't allocate socket because all of them are in use   
          rts
 ;
 open_channel_fail

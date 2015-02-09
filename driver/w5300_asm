@@ -2,6 +2,7 @@
          include  dev1_driver_in
          include  dev2_SMS1_in
          xdef     w5300_init
+         xdef     w5300_socket
          xdef     w5300_sendto_impl
          xdef     socket_open_udp
          xdef     socket_close
@@ -148,6 +149,20 @@ udp_open_ok
 socket_not_closed_err
          moveq    #-2,d0
          rts
+;
+; Open a socket implementation (nowait for IOSS 'open' routine)
+; Parameters:
+;  d0.w = source port
+;  d1.b = socket #
+;  d2.b = socket type (1 = TCP, 2 = UDP)
+w5300_socket
+         bsr      sr_base           ; a2 := socket memory address base
+         and.b    #$F0,S_MR1(a2)    ; Clear protocol bits of socket mode register
+         or.b     d2,S_MR1(a2)      ; Set protocol
+         move.w   d0,S_PORTR(a2)    ; Source port
+         move.b   #SC_OPEN,S_CR1(a2)
+         rts
+;
 ;
 ; W5300 implementation of sendto
 ; Parameters:

@@ -51,3 +51,5 @@ NSL_DRVLBPTR         equ      -14         ; FP offset for pointer to driver link
 NSL_STRUCT_HE_BUF    equ      -18         ; FP offset for pointer to temporary struct hostent buffer
 NSL_SCK_CHANNEL      equ      -22         ; Channel id of SCK_ channel
 NSL_IP_STRING_BUF    equ      -38         ; FP offset to ip address string buffer
+SOCK_MODE_TCP        equ      1
+SOCK_MODE_UDP        equ      2
