@@ -177,6 +177,7 @@ w5300_socket
 w5300_sendto_impl
          bsr      sr_base                                ; a2 := socket memory address base
          bsr.s    socket_set_dest
+         move.w   d0,d2
          bsr.s    socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
          move.w   d0,S_TX_WS2(a2)
          move.b   #SC_SEND,S_CR1(a2)
@@ -230,6 +231,8 @@ socket_write_bytes
          btst     #0,d7
          beq.s    write_word_aligned            ; Buffer is word-aligned
 ; Write from a non-aligned buffer using bytes-sized operations
+         asr.w    #1,d2
+         bcs.s    write_byte_sized_loop
          subq.w   #1,d2
 write_byte_sized_loop
          move.b   (a1)+,S_TXFIFO(a2)
@@ -240,7 +243,7 @@ write_word_aligned
          asr.w    #1,d2
          bcs.s    w_wloop
          subq.w   #1,d2
-w_wloop  move.w   (a3)+,S_TXFIFO(a2)
+w_wloop  move.w   (a1)+,S_TXFIFO(a2)
          dbf      d2,w_wloop
          rts
 ;
