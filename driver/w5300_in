@@ -86,6 +86,7 @@ S_IR_SENDOK    equ      $10               ; IR Send OK flag
 ; Socket commands
 SC_OPEN  equ      1
 SC_CONN  equ      4
+SC_CLOSE equ      $10
 SC_SEND  equ 		$20
 ; Socket states
 SS_CLSD  equ      0                 ; SOCK_CLOSED state

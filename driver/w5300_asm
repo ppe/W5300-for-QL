@@ -96,7 +96,7 @@ s_clsd   moveq    #err.ichn,d0                     ; -6 = invalid channel id
 socket_close
          ext.w    d0
          bsr      sr_base                       ; a2 <= base address of socket n registers
-         move.b   #SC_OPEN,S_CR1(a2)
+         move.b   #SC_CLOSE,S_CR1(a2)
          rts
 ;
 ; Open a UDP socket
