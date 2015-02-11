@@ -186,7 +186,7 @@ w5300_sendto_impl
 sendto_wait_sendok
          move.b   S_IR1(a2),d0
          andi.b   #S_IR_SENDOK,d0
-         beq.s    sendto_sendok
+         bne.s    sendto_sendok
          cmp.b    #SS_CLSD,S_SSR1(a2)
          beq.s    sendto_sock_closed
          move.b   S_IR1(a2),d0
