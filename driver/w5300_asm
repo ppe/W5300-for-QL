@@ -95,6 +95,7 @@ s_clsd   moveq    #err.ichn,d0                     ; -6 = invalid channel id
 ;  a2
 socket_close
          ext.w    d0
+         move.w   d0,d1
          bsr      sr_base                       ; a2 <= base address of socket n registers
          move.b   #SC_CLOSE,S_CR1(a2)
          rts
