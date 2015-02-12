@@ -13,8 +13,10 @@ DNS_MAX_NAME_LEN     equ      254
 IP_MAX_STRINGLEN     equ      16          ; Max length of null-terminated ip address string '100.100.100.100\0'
 NUM_SOCKETS          equ      8           ; Total of 8 sockets on the card
 SOCK_RT_STAT_FREE    equ      $FFFFFFFF   ; Reservation table entry to signify that a socket is not reserved
-; Netdb functions: d0 values for trap #3 calls
+; Socket functionality d0 values for trap #3
 IP_SENDTO            equ      $52
+IP_RECVFM            equ      $54
+; Netdb functions: d0 values for trap #3 calls
 IP_GETHOSTBYNAME     equ      $5E
 IP_INET_ATON         equ      $72
 IP_INET_NTOA         equ      $75

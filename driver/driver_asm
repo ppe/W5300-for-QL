@@ -532,6 +532,8 @@ channel_IO_check_operation
          beq      ip_inet_ntoa_impl
          cmpi.b   #IP_SENDTO,d0
          beq.s    ip_sendto_impl
+         cmpi.b   #IP_RECVFM,d0
+         beq.s    ip_recvfrom_impl
          moveq    #0,d0
          rts
 driver_info
@@ -587,6 +589,31 @@ ip_sendto_impl
 ip_sendto_no_socket
 ; TODO proper error code
          moveq    #-1,d0
+         rts
+;
+; IP_RECVFM
+;
+; Provides recvfrom(2) functionality
+;
+;    D0 = IP_RECVFM
+;    D1 = (uint) flag
+;    D2 = (int) buffer size
+;    D3 = (short) timeout (-1)
+;
+;    A0 = (chanid_t) channel ID
+;    A1 = (void *) buffer address
+;    A2 = parameter block (2 long words)
+;       params0 = (struct sockaddr*) from
+;       params1 = (int) fromlen;
+;
+;    Output
+;
+;    D0 = result
+;       +ve => number of bytes sent
+;       -ve => error code
+;    D1 = size of returned struct sockaddr
+;
+ip_recvfrom_impl
          rts
 ;
 ; Provides gethostbyname(2) functionality
