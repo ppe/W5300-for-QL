@@ -4,6 +4,7 @@
          xdef     w5300_init
          xdef     w5300_socket
          xdef     w5300_sendto_impl
+         xdef     w5300_recvfrom_impl
          xdef     socket_open_udp
          xdef     socket_close
          section  w5300
@@ -203,6 +204,35 @@ sendto_sock_closed
          moveq    #0,d0
          rts
 ;
+; W5300 implementation of recvfrom
+; Parameters:
+;  d0.w = # of bytes available in buffer
+;  d1.b = socket #
+;  a1 = buffer address
+; Returns:
+;  d0.w = # of bytes written
+;  d2.l = peer ip
+;  d3.w = peer port
+;
+w5300_recvfrom_impl
+         bsr      sr_base                 ; a2 = socket memory base
+; Check that the socket is in UDP mode
+         move.b   S_MR1(a2),d4
+         andi.b   #S_MR_PROT,d4                 ; Leave only protocol bits
+         cmpi.b   #S_MR_UDP,d4
+         bne      recvfrom_exit_not_udp         ; Socket is not in UDP mode
+; Check if there are bytes available on the socket
+         cmpi.w   #0,S_RXRSR2(a2)
+         beq.s    recvfrom_no_data
+; TODO Copy data from socket FIFO to receive buffer
+         rts
+recvfrom_no_data
+         rts
+recvfrom_exit_not_udp
+; TODO: change to correct error code
+         moveq    #-7,d0
+         rts
+;
 ; Set destination for socket
 ; Parameters:
 ;  d1.b = socket #
@@ -215,6 +245,31 @@ socket_set_dest
          bsr.s    sr_base        ; a2 = base address of socket registers
          move.l   d2,S_DIPR(a2)
          move.w   d3,S_DPORTR(a2)
+         rts
+; Read a maximum of n bytes from socket, or up to maximum available, whichever is less
+;  Parameters:
+;     a1 = buffer to copy bytes to
+;     a2 = socket memory base
+;     d5 = max number of bytes to read
+;  Returns:
+;     d6 = actual number of bytes read
+socket_read_bytes
+         moveq    #0,d6
+; Check if buffer is word-aligned
+         move.l   a1,d7
+         btst     #0,d7
+         beq.s    read_word_aligned
+
+         rts
+read_word_aligned
+         asr.w    #1,d5
+         bcs.s    read_word_aligned_loop
+         subq.w   #1,d5
+         addq.w   #1,d6
+read_word_aligned_loop
+         move.w   S_RXFIFO(a2),(a1)+
+         addq.w   #2,d6
+         dbra     d5,read_word_aligned_loop
          rts
 ;
 ; Write bytes to a socket

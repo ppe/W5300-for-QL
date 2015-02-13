@@ -79,6 +79,7 @@ S_RXFIFO equ      $30               ; Socket RX FIFO register
 ; Register manipulation bits
 MR_RST         equ      $80               ; Mode register reset
 S_MR_PM        equ      $F0               ; Mask for resetting the socket mode register protocol bits
+S_MR_PROT      equ      $0F               ; Mask for extracting the protocol from mode register
 S_MR_TCP       equ      1                 ; TCP protocol for socket mode register
 S_MR_UDP       equ      2                 ; UDP protocol for socket mode register
 S_IR_TIMEOUT   equ      $08
