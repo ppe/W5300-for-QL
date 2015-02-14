@@ -180,7 +180,7 @@ w5300_sendto_impl
          bsr      sr_base                                ; a2 := socket memory address base
          bsr.s    socket_set_dest
          move.w   d0,d2
-         bsr.s    socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
+         bsr      socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
          move.w   d0,S_TX_WS2(a2)
          move.b   #SC_SEND,S_CR1(a2)
          move.w   #60000,d1                              ; d1 = loop counter to wait for SENDOK before returning ERR_NC
@@ -220,7 +220,7 @@ w5300_recvfrom_impl
          move.b   S_MR1(a2),d4
          andi.b   #S_MR_PROT,d4                 ; Leave only protocol bits
          cmpi.b   #S_MR_UDP,d4
-         bne      recvfrom_exit_not_udp         ; Socket is not in UDP mode
+         bne.s    recvfrom_exit_not_udp         ; Socket is not in UDP mode
 ; Check if there are bytes available on the socket
          cmpi.w   #0,S_RXRSR2(a2)
          beq.s    recvfrom_no_data
@@ -250,11 +250,9 @@ socket_set_dest
 ;  Parameters:
 ;     a1 = buffer to copy bytes to
 ;     a2 = socket memory base
-;     d5 = max number of bytes to read
-;  Returns:
-;     d6 = actual number of bytes read
+;     d5 = number of bytes to read
 socket_read_bytes
-         moveq    #0,d6
+         move.l   d5,d6
 ; Check if buffer is word-aligned
          move.l   a1,d7
          btst     #0,d7
@@ -265,11 +263,20 @@ read_word_aligned
          asr.w    #1,d5
          bcs.s    read_word_aligned_loop
          subq.w   #1,d5
-         addq.w   #1,d6
+         bra.s    read_word_aligned_loop_end
 read_word_aligned_loop
          move.w   S_RXFIFO(a2),(a1)+
          addq.w   #2,d6
+read_word_aligned_loop_end
          dbra     d5,read_word_aligned_loop
+         move.w   S_RXFIFO(a2),d7
+         btst     #0,d6                         ; Check if odd number of bytes was requested
+         beq.s    read_word_aligned_end
+         lsr.w    #8,d7
+         move.b   d7,(a1)+
+         rts
+read_word_aligned_end
+         move.w   d7,(a1)+
          rts
 ;
 ; Write bytes to a socket
