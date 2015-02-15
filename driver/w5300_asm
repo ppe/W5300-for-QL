@@ -7,6 +7,7 @@
          xdef     w5300_recvfrom_impl
          xdef     socket_open_udp
          xdef     socket_close
+         xdef     socket_read_bytes
          section  w5300
 w5300_init
          movea.l  #iobase,a1        ; A1 points to beginning of memory mapped IO space into W5300
@@ -137,8 +138,8 @@ udp_open_wait_state_udp
 ; Wait for socket to move to state SOCK_UDP
          move.b   S_SSR1(a2),d2
 ; TODO: testing, switch to correct implementation below on real HW
-;         cmpi.b   #0,d2
-         cmpi.b   #SS_UDP,d2
+         cmpi.b   #0,d2
+;         cmpi.b   #SS_UDP,d2
          beq.s    udp_open_ok
          lea      udp_open_wait_state_udp,a1
          move.l   a2,CHAN_REG_STORE(a0)         ; Store pointer to socket register block
@@ -261,12 +262,14 @@ socket_read_bytes
          rts
 read_word_aligned
          asr.w    #1,d5
-         bcs.s    read_word_aligned_loop
+         bcs.s    read_word_aligned_loop_end
          subq.w   #1,d5
          bra.s    read_word_aligned_loop_end
 read_word_aligned_loop
-         move.w   S_RXFIFO(a2),(a1)+
-         addq.w   #2,d6
+; TODO: use the implementation on next line for speed when not debugging
+;         move.w   S_RXFIFO(a2),(a1)+
+         move.w   S_RXFIFO(a2),d7
+         move.w   d7,(a1)+
 read_word_aligned_loop_end
          dbra     d5,read_word_aligned_loop
          move.w   S_RXFIFO(a2),d7

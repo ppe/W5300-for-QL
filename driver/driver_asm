@@ -7,6 +7,7 @@
          xref     w5300_init
          xref     w5300_socket
          xref     w5300_sendto_impl
+         xref     socket_read_bytes
          xref     socket_close
          xref     create_dns_query_buffer
          xref     socket_open_udp
@@ -614,6 +615,12 @@ ip_sendto_no_socket
 ;    D1 = size of returned struct sockaddr
 ;
 ip_recvfrom_impl
+;     a1 = buffer to copy bytes to
+;     a2 = socket memory base
+;     d5 = number of bytes to read
+         movea.l  #$19200,a2
+         move.w   d2,d5
+         bsr      socket_read_bytes
          rts
 ;
 ; Provides gethostbyname(2) functionality
