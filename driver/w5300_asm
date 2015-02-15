@@ -243,7 +243,7 @@ recvfrom_exit_not_udp
 ;  a2
 ;
 socket_set_dest
-         bsr.s    sr_base        ; a2 = base address of socket registers
+         bsr      sr_base        ; a2 = base address of socket registers
          move.l   d2,S_DIPR(a2)
          move.w   d3,S_DPORTR(a2)
          rts
@@ -258,8 +258,31 @@ socket_read_bytes
          move.l   a1,d7
          btst     #0,d7
          beq.s    read_word_aligned
-
+; target buffer is unaligned
+         asr.w    #1,d5
+         bcs.s    read_unaligned_loop_end
+         subq.w   #1,d5
+         bra.s    read_unaligned_loop_end
+read_unaligned_loop
+         move.b   S_RXFIFO(a2),d7
+         move.b   d7,(a1)+
+         move.b   S_RXFIFO1(a2),d7
+         move.b   d7,(a1)+
+read_unaligned_loop_end
+         dbra     d5,read_unaligned_loop
+         move.w   S_RXFIFO(a2),d7
+         btst     #0,d6                         ; Check if odd number of bytes was requested
+         beq.s    read_unaligned_end
+         lsr.w    #8,d7
+         move.b   d7,(a1)+
          rts
+read_unaligned_end
+         ror.w    #8,d7
+         move.b   d7,(a1)+
+         lsr.w    #8,d7
+         move.b   d7,(a1)+
+         rts
+;
 read_word_aligned
          asr.w    #1,d5
          bcs.s    read_word_aligned_loop_end

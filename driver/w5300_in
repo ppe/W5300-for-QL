@@ -48,34 +48,35 @@ S5_BASE  equ      $340              ; Base address for socket 5 addressing
 S6_BASE  equ      $380              ; Base address for socket 6 addressing
 S7_BASE  equ      $3C0              ; Base address for socket 7 addressing
 ; Socket register offsets
-S_MR     equ      $00               ; Socket mode register
-S_MR1    equ      $01               ; Socket mode register high byte
-S_CR     equ      $02               ; Socket command register
-S_CR0    equ      $02               ; Socket command register low byte (reserved)
-S_CR1    equ      $03               ; Socket command register high byte
-S_IMR    equ      $04               ; Socket interrupt mask register
-S_IR     equ      $06               ; Socket interrupt register
-S_IR1    equ      $07               ; Socket interrupt register (high byte, actual working bits)
-S_SSR    equ      $08               ; Socket status register (word)
-S_SSR0   equ      $08               ; Socket status register (low byte, reserved)
-S_SSR1   equ      $09               ; Socket status register (high byte)
-S_PORTR  equ      $0A               ; Socket source port register
-S_DHAR   equ      $0C               ; Socket destination hardware address register
-S_DPORTR equ      $12               ; Socket destination port register
-S_DIPR   equ      $14               ; Socket destination IP address register
-S_MSSR   equ      $18               ; Socket maximum segment size register
-S_KPALVR equ      $1A               ; Socket keepalive time register
-S_PROTOR equ      $1B               ; Socket protocol number register
-S_TOSR   equ      $1C               ; Socket TOS register
-S_TTLR   equ      $1E               ; Socket TTL register
-S_TX_WS  equ      $20               ; Socket TX write size register
-S_TX_WS2 equ      $22               ; Socket TX write size register
-S_TX_FSR equ      $24               ; Socket TX free size register
-S_RXRSR  equ      $28               ; Socket RX receive size register
-S_RXRSR2 equ      $2A               ; Socket RX receive size register 2nd word
-S_FRAGR  equ      $2C               ; Socket FLAG register
-S_TXFIFO equ      $2E               ; Socket TX FIFO register
-S_RXFIFO equ      $30               ; Socket RX FIFO register
+S_MR        equ      $00               ; Socket mode register
+S_MR1       equ      $01               ; Socket mode register high byte
+S_CR        equ      $02               ; Socket command register
+S_CR0       equ      $02               ; Socket command register low byte (reserved)
+S_CR1       equ      $03               ; Socket command register high byte
+S_IMR       equ      $04               ; Socket interrupt mask register
+S_IR        equ      $06               ; Socket interrupt register
+S_IR1       equ      $07               ; Socket interrupt register (high byte, actual working bits)
+S_SSR       equ      $08               ; Socket status register (word)
+S_SSR0      equ      $08               ; Socket status register (low byte, reserved)
+S_SSR1      equ      $09               ; Socket status register (high byte)
+S_PORTR     equ      $0A               ; Socket source port register
+S_DHAR      equ      $0C               ; Socket destination hardware address register
+S_DPORTR    equ      $12               ; Socket destination port register
+S_DIPR      equ      $14               ; Socket destination IP address register
+S_MSSR      equ      $18               ; Socket maximum segment size register
+S_KPALVR    equ      $1A               ; Socket keepalive time register
+S_PROTOR    equ      $1B               ; Socket protocol number register
+S_TOSR      equ      $1C               ; Socket TOS register
+S_TTLR      equ      $1E               ; Socket TTL register
+S_TX_WS     equ      $20               ; Socket TX write size register
+S_TX_WS2    equ      $22               ; Socket TX write size register
+S_TX_FSR    equ      $24               ; Socket TX free size register
+S_RXRSR     equ      $28               ; Socket RX receive size register
+S_RXRSR2    equ      $2A               ; Socket RX receive size register 2nd word
+S_FRAGR     equ      $2C               ; Socket FLAG register
+S_TXFIFO    equ      $2E               ; Socket TX FIFO register
+S_RXFIFO    equ      $30               ; Socket RX FIFO register
+S_RXFIFO1   equ      $31               ; Socket RX FIFO register high byte
 ; Register manipulation bits
 MR_RST         equ      $80               ; Mode register reset
 S_MR_PM        equ      $F0               ; Mask for resetting the socket mode register protocol bits
