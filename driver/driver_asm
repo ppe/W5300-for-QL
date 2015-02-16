@@ -615,6 +615,12 @@ ip_sendto_no_socket
 ;    D1 = size of returned struct sockaddr
 ;
 ip_recvfrom_impl
+         tst.w    d2
+         bne.s    recvfrom_buffer_size_ok
+         moveq    #ERR.OR,d0                 ; Out of range
+         rts
+recvfrom_buffer_size_ok
+         bsr      find_socket_reservation 
 ;     a1 = buffer to copy bytes to
 ;     a2 = socket memory base
 ;     d5 = number of bytes to read
