@@ -7,6 +7,7 @@
          xref     w5300_init
          xref     w5300_socket
          xref     w5300_sendto_impl
+         xref     w5300_bytes_available
          xref     socket_read_bytes
          xref     socket_close
          xref     create_dns_query_buffer
@@ -526,7 +527,7 @@ channel_IO_check_operation
          cmpi.b   #QE_IO_DRV_INFO,d0
          beq.s    driver_info
          cmpi.b   #IP_GETHOSTBYNAME,d0
-         beq.s    ip_gethostbyname_impl
+         beq      ip_gethostbyname_impl
          cmpi.b   #IP_INET_ATON,d0
          beq      ip_inet_aton_impl
          cmpi.b   #IP_INET_NTOA,d0
@@ -615,18 +616,34 @@ ip_sendto_no_socket
 ;    D1 = size of returned struct sockaddr
 ;
 ip_recvfrom_impl
+; TODO flags ignored
          tst.w    d2
          bne.s    recvfrom_buffer_size_ok
          moveq    #ERR.OR,d0                 ; Out of range
          rts
 recvfrom_buffer_size_ok
-         bsr      find_socket_reservation 
+; Store parameters
+         lea      CHAN_LOCAL_VARS(a0),a5
+         move.l   a2,IO_PARAM_BLOCK_PTR(a5)
+         move.l   d1,IO_FLAGS(a5)
+         bsr      find_socket_reservation    ; Get socket # in d0
+         tst.b    d0
+         bmi.s    recvfrom_no_socket_allocated
+         bsr      w5300_bytes_available      ; Overwrites d1 and a2, d1 = # bytes available
+         tst.w    d1
+         bne.s    recvfrom_bytes_available
+         moveq    #ERR.NC,d0                 ; Not complete, try again later
+         rts
+recvfrom_bytes_available
 ;     a1 = buffer to copy bytes to
 ;     a2 = socket memory base
 ;     d5 = number of bytes to read
          movea.l  #$19200,a2
          move.w   d2,d5
          bsr      socket_read_bytes
+         rts
+recvfrom_no_socket_allocated
+         moveq    #ERR.NO,d0                 ; Not open
          rts
 ;
 ; Provides gethostbyname(2) functionality

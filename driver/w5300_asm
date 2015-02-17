@@ -5,6 +5,7 @@
          xdef     w5300_socket
          xdef     w5300_sendto_impl
          xdef     w5300_recvfrom_impl
+         xdef     w5300_bytes_available
          xdef     socket_open_udp
          xdef     socket_close
          xdef     socket_read_bytes
@@ -382,4 +383,19 @@ wrb_odd  bsr      sr_base
 w_rdloop move.w   S_RXFIFO(a2),(a3)+
          dbf      d2,w_rdloop
          rts
+; Check if there are bytes available on a socket
+; Parameters:
+;  d0.b = # of socket to check
+; Returns:
+;  d1.w = # of bytes available
+; Corrupts:
+;  a2
+; 
+w5300_bytes_available
+         move.b   d0,d1
+         ext.w    d1
+         bsr      sr_base           ; Socket base address to a2
+         move.w   S_RXRSR2(a2),d1
+         rts
+;
          end
