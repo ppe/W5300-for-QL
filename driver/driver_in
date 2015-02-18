@@ -34,7 +34,10 @@ IO_SOCK_NUM          equ      20          ; Word size
 IO_DNS_QUERY_BUF_PTR equ      22          ; Pointer to block of memory containing outgoing DNS query
 ; Recvfrom local vars
 IO_PARAM_BLOCK_PTR   equ      16          ; Recvfrom parameter block pointer (long word) passed in a2
-IO_FLAGS             equ      20          ; Flag long word passed in d1
+;IO_SOCK_NUM          equ      20          ; Word size
+IO_FLAGS             equ      22          ; Flag long word passed in d1
+IO_BUFSIZ            equ      26          ; Size of receive buffer
+
 ;
 QE_IO_DRV_INFO       equ      $7E
 QE_MEM_UH_PTR        equ      $28         ; Long word pointer to user heap base address (needed for QDOS user heap MT_ALLOC calls)

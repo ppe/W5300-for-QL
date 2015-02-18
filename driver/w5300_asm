@@ -8,7 +8,6 @@
          xdef     w5300_bytes_available
          xdef     socket_open_udp
          xdef     socket_close
-         xdef     socket_read_bytes
          section  w5300
 w5300_init
          movea.l  #iobase,a1        ; A1 points to beginning of memory mapped IO space into W5300

@@ -7,8 +7,8 @@
          xref     w5300_init
          xref     w5300_socket
          xref     w5300_sendto_impl
+         xref     w5300_recvfrom_impl
          xref     w5300_bytes_available
-         xref     socket_read_bytes
          xref     socket_close
          xref     create_dns_query_buffer
          xref     socket_open_udp
@@ -624,23 +624,25 @@ ip_recvfrom_impl
 recvfrom_buffer_size_ok
 ; Store parameters
          lea      CHAN_LOCAL_VARS(a0),a5
+         move.l   a1,IO_BUFFER(a5)
          move.l   a2,IO_PARAM_BLOCK_PTR(a5)
          move.l   d1,IO_FLAGS(a5)
-         bsr      find_socket_reservation    ; Get socket # in d0
+         move.l   d2,IO_BUFSIZ(a5)
+         bsr      find_socket_reservation    ; Get socket # in d0.l
          tst.b    d0
          bmi.s    recvfrom_no_socket_allocated
+         move.w   d0,IO_SOCK_NUM(a5)
          bsr      w5300_bytes_available      ; Overwrites d1 and a2, d1 = # bytes available
          tst.w    d1
          bne.s    recvfrom_bytes_available
          moveq    #ERR.NC,d0                 ; Not complete, try again later
          rts
 recvfrom_bytes_available
-;     a1 = buffer to copy bytes to
-;     a2 = socket memory base
-;     d5 = number of bytes to read
-         movea.l  #$19200,a2
-         move.w   d2,d5
-         bsr      socket_read_bytes
+         move.w   IO_SOCK_NUM(a5),d1
+         move.l   IO_BUFSIZ(a5),d0
+         move.l   IO_BUFFER(a5),a1
+         bsr      w5300_recvfrom_impl
+; TODO return value processing
          rts
 recvfrom_no_socket_allocated
          moveq    #ERR.NO,d0                 ; Not open
