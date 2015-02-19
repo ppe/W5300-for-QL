@@ -239,6 +239,7 @@ w5300_recvfrom_impl
          move.l   -8(a5),d2   ; Peer IP
          move.l   -4(a5),d3   ; Peer port #
          move.w   -2(a5),d0   ; # bytes in packet
+         move.w   #SC_RECV,S_CR(a2)    ; Tell W5300 that we have read the packet
          unlk     a5
          rts
 recvfrom_no_data
