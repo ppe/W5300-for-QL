@@ -179,7 +179,7 @@ w5300_socket
 ;
 w5300_sendto_impl
          bsr      sr_base                                ; a2 := socket memory address base
-         bsr.s    socket_set_dest
+         bsr      socket_set_dest
          move.w   d0,d2
          bsr      socket_write_bytes                     ; d2 = # bytes to write, a1 = buffer address
          move.w   d0,S_TX_WS2(a2)
@@ -225,7 +225,21 @@ w5300_recvfrom_impl
 ; Check if there are bytes available on the socket
          cmpi.w   #0,S_RXRSR2(a2)
          beq.s    recvfrom_no_data
-; TODO Copy data from socket FIFO to receive buffer
+; TODO check that buffer is big enough for received bytes and allocate temp buffer for subsequent calls
+; if target buffer is too small for received packet
+         link     a5,#-10    ; Packet info 8 bytes, #bytes available 2 bytes
+         movea.l  a1,a4      ; Save buffer start address
+         lea      -8(a5),a1  ; Point to local vars in stack frame
+         move.w   d0,-10(a5) ; Save # of bytes available
+         moveq    #8,d5      ; Read packet info |destip (4 bytes)|destport (2 bytes)|packet size(2 bytes)
+         bsr.s    socket_read_bytes
+         move.w   -2(a5),d5  ; # bytes in packet
+         movea.l  a4,a1      ; Destination buffer address
+         bsr.s    socket_read_bytes
+         move.l   -8(a5),d2   ; Peer IP
+         move.l   -4(a5),d3   ; Peer port #
+         move.w   -2(a5),d0   ; # bytes in packet
+         unlk     a5
          rts
 recvfrom_no_data
          rts
@@ -251,7 +265,7 @@ socket_set_dest
 ;  Parameters:
 ;     a1 = buffer to copy bytes to
 ;     a2 = socket memory base
-;     d5 = number of bytes to read
+;     d5.w = number of bytes to read
 socket_read_bytes
          move.l   d5,d6
 ; Check if buffer is word-aligned
