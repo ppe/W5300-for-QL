@@ -1,0 +1,91 @@
+/*
+ * Includes inet_pton() code from http://rsync.samba.org/doxygen/head/inet__pton_8c-source.html 
+ * Copyright below
+*/
+/*
+ * Copyright (C) 1996-2001  Internet Software Consortium.
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND INTERNET SOFTWARE CONSORTIUM
+ * DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL
+ * INTERNET SOFTWARE CONSORTIUM BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING
+ * FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
+ * NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
+ * WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#ifndef	_NETINET_IN_H_
+#define	_NETINET_IN_H_
+
+#include <string.h>
+
+#define	SOCK_STREAM	1		/* stream socket */
+#define	SOCK_DGRAM	2		/* datagram socket */
+#define	SOCK_RAW	3		/* raw-protocol interface */
+#define	SOCK_RDM	4		/* reliably-delivered message */
+#define	SOCK_SEQPACKET	5		/* sequenced packet stream */
+
+#define	AF_UNSPEC	0		/* unspecified address family */
+#define	AF_INET		2		/* internet: UDP, TCP, etc. */
+#define	PF_UNSPEC	AF_UNSPEC       /* aliases */
+#define	PF_INET		AF_INET
+
+/* for inet_pton */
+#define NS_INADDRSZ      4
+
+typedef unsigned char sa_family_t;
+typedef unsigned short in_port_t;
+
+/* Internet address. */
+struct in_addr {
+    unsigned long  s_addr;
+};
+
+struct sockaddr_in {
+    sa_family_t    sin_family; /* address family: AF_INET */
+    in_port_t      sin_port;   /* port in network byte order */
+    struct in_addr sin_addr;   /* internet address */
+};
+
+int inet_pton(unsigned char addr_family, const char *src, unsigned char *dst)
+{
+        static const char digits[] = "0123456789";
+        int saw_digit, octets, ch;
+        unsigned char tmp[NS_INADDRSZ], *tp;
+
+        saw_digit = 0;
+        octets = 0;
+        *(tp = tmp) = 0;
+        while ((ch = *src++) != '\0') {
+                const char *pch;
+
+                if ((pch = strchr(digits, ch)) != NULL) {
+                        unsigned int new = *tp * 10 + (pch - digits);
+
+                        if (new > 255)
+                                return (0);
+                        *tp = new;
+                        if (! saw_digit) {
+                                if (++octets > 4)
+                                        return (0);
+                                saw_digit = 1;
+                        }
+                } else if (ch == '.' && saw_digit) {
+                        if (octets == 4)
+                                return (0);
+                        *++tp = 0;
+                        saw_digit = 0;
+                } else
+                        return (0);
+        }
+        if (octets < 4)
+                return (0);
+        memcpy(dst, tmp, NS_INADDRSZ);
+        return (1);
+}
+
+#endif
