@@ -1,0 +1,412 @@
+#include "resolv_h"
+#include "in_h"
+#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <qdos.h>
+
+/* Adapted from http://www.binarytides.com/blog/dns-query-code-in-c-with-winsock/ */
+#define CACHED_ENTRIES 10
+static struct dns_cache_entry entry_cache[CACHED_ENTRIES];
+static int initialized = 0;
+static unsigned long cache_refcount;
+
+unsigned short readWord(unsigned char *address) {
+    unsigned short value;
+    value = (address[0]<<8) + address[1];
+}
+
+void initialize_cache() {
+    int i;
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("Initializing resolver cache.\n");
+    #endif
+
+    for (i = 0; i < CACHED_ENTRIES; i++) {
+        entry_cache[i].hostname = NULL;
+        entry_cache[i].address = 0;
+        entry_cache[i].refcount = 0;
+    }
+}
+
+unsigned long get_from_cache( char * hostname ) {
+    int i;
+
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"Find: ",6);
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,hostname,strlen(hostname));
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"\n",1);
+
+	
+    if(NULL == hostname) {
+        return 0;
+    }
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("Lookup '%s' in cache.\n", hostname);
+    #endif
+
+    for(i = 0;i < CACHED_ENTRIES; i++) {
+        char *cached_name = entry_cache[i].hostname;
+
+        if( NULL != cached_name && !strcmp(hostname, cached_name )) {
+            entry_cache[i].refcount = ++cache_refcount;
+            #ifdef __DEF_IINCHIP_DBG__
+                printf("Found address %x for '%s' in cache.\n", entry_cache[i].address, hostname);
+                printf("Set refcount for index %d to %d.\n", i, cache_refcount);
+            #endif
+            return entry_cache[i].address;
+        }
+    }
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("Address for '%s' NOT in cache.\n", hostname);
+    #endif
+    return 0;
+}
+
+void set_cache_entry( int i, char *hostname, unsigned long address) {
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"Store: ",7);
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,hostname,strlen(hostname));
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"\n",1);
+
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("Set cache entry at %d to for host '%s' to %x.\n", i, hostname, address);
+    #endif
+
+    if( 0 <= i && i < CACHED_ENTRIES ) {
+        entry_cache[i].hostname = strdup(hostname);
+        entry_cache[i].address = address;
+        entry_cache[i].refcount = ++cache_refcount;
+        #ifdef __DEF_IINCHIP_DBG__
+            printf("Set refcount for index %d to %d.\n", i, cache_refcount);
+        #endif
+    }
+}
+
+int find_LRU_cache_entry() {
+    unsigned long min = ULONG_MAX;
+    int min_index = 0;
+    int i;
+
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("Find cache LRU entry.\n");
+    #endif
+    for(i = 0;i < CACHED_ENTRIES; i++) {
+        int refcount = entry_cache[i].refcount;
+        #ifdef __DEF_IINCHIP_DBG__
+            printf("refcount[%d] = %d.\n", i, refcount);
+        #endif
+        if (refcount < min) {
+            min = refcount;
+            min_index = i;
+        }
+    }
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("LRU index = %d.\n", min_index);
+    #endif
+
+    return min_index;
+}
+
+void store_in_cache( char * hostname, unsigned long address ) {
+    int i;
+
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("Store host '%s' with address %x in cache.\n", hostname, address);
+    #endif
+
+    if(NULL == hostname || 0 == address || 0xffffffff == address) {
+        #ifdef __DEF_IINCHIP_DBG__
+            printf("Not storing, invalid hostname or address.\n");
+        #endif
+        return;
+    }
+
+    if (get_from_cache( hostname ) > 0 ) {
+        #ifdef __DEF_IINCHIP_DBG__
+            printf("Not storing, already in cache.\n");
+        #endif
+        return;
+    }
+    for(i = 0;i < CACHED_ENTRIES; i++) {
+        char *cached_name = entry_cache[i].hostname;
+        if(NULL == cached_name) {
+            #ifdef __DEF_IINCHIP_DBG__
+                printf("Found unused slot at index %d.\n", i);
+            #endif
+            set_cache_entry(i, hostname, address);
+            return;
+        }
+    }
+    #ifdef __DEF_IINCHIP_DBG__
+        printf("Cache full, find LRU entry to evict.\n");
+    #endif
+    {
+        int evicted_index = find_LRU_cache_entry();
+        free(entry_cache[evicted_index].hostname);
+        set_cache_entry(evicted_index, hostname, address);
+    }
+}
+
+void send_udp(SOCKET s, uint8 * buf, uint32 len)
+{
+ uint8 destip[4] = {192,168,1,1};
+ uint16 destport = 53;
+
+ switch(getSn_SSR(s))
+ {
+  case SOCK_UDP:
+  if(len !=sendto(s,buf,len,destip,destport))
+  {
+     printf("%d : Sendto Fail.len=%d,",s,len);
+     printf("%d.%d.%d.%d(%d)\r\n",destip[0],destip[1],destip[2],destip[3],destport);
+ }
+ break;
+ default:
+ printf("UDP send failed. Socket not in SOCK_UDP state. Closing socket.\n");
+ close(s);
+ break;
+}
+}
+
+void read_udp(SOCKET s, uint8 * buf, uint32 len)
+{
+ uint8 destip[4];
+ uint16 destport;
+ int i;
+
+ switch(getSn_SSR(s))
+ {
+  case SOCK_UDP:
+  for(i=0;i<10;i++) {
+             if((len=getSn_RX_RSR(s)) > 0)                   /* check the size of received data */
+   {
+                len = recvfrom(s,buf,len,destip,&destport);  /* receive data from a destination */
+    break;
+} else {
+    printf("Still waiting for answer...");
+    sleep(1);
+}
+}
+break;
+      case SOCK_CLOSED:                                  /* CLOSED */
+         close(s);                                       /* close the SOCKET */
+break;
+default:
+break;
+}
+}
+
+unsigned char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
+{
+    unsigned char *name;
+    unsigned int p=0,jumped=0,offset;
+    int i , j;
+
+    *count = 1;
+    name = (unsigned char*)malloc(256);
+
+    name[0]='\0';
+
+    /*read the names in 3www6google3com format */
+    while(*reader!=0)
+    {
+        if(*reader>=192)
+        {
+            offset = (*reader)*256 + *(reader+1) - 49152; /*49152 = 11000000 00000000 ;) */
+            reader = buffer + offset - 1;
+            jumped = 1; /*we have jumped to another location so counting wont go up! */
+        }
+        else
+        {
+            name[p++]=*reader;
+        }
+
+        reader=reader+1;
+
+        if(jumped==0) *count = *count + 1; /*if we havent jumped to another location then we can count up */
+    }
+
+    name[p]='\0'; /*string complete */
+    if(jumped==1)
+    {
+        *count = *count + 1; /*number of steps we actually moved forward in the packet */
+    }
+
+    /*now convert 3www6google3com0 to www.google.com */
+    for(i=0;i<(int)strlen((const char*)name);i++)
+    {
+        p=name[i];
+        for(j=0;j<(int)p;j++)
+        {
+            name[i]=name[i+1];
+            i=i+1;
+        }
+        name[i]='.';
+    }
+
+    name[i-1]='\0'; /*remove the last dot */
+
+    return name;
+}
+
+void ChangetoDnsNameFormat(unsigned char* dns, unsigned char* host)
+{
+    int lock=0 , i;
+    unsigned char *orig_dns;
+
+    orig_dns = dns;
+
+    for(i=0 ; i<(int)strlen((char*)host) ; i++)
+    {
+        if(host[i]=='.')
+        {
+            *dns++=i-lock;
+            for(;lock<i;lock++)
+            {
+                *dns++=host[lock];
+            }
+            lock++; /*or lock=i+1; */
+        }
+    }
+    *dns++='\0';
+}
+
+void fillHeader(struct DNS_HEADER * dnsHeader) {
+    dnsHeader->qr = 0; /*This is a query */
+    dnsHeader->opcode = 0; /*This is a standard query */
+    dnsHeader->aa = 0; /*Not Authoritative */
+    dnsHeader->tc = 0; /*This message is not truncated */
+    dnsHeader->rd = 1; /*Recursion Desired */
+    dnsHeader->ra = 0;
+    dnsHeader->z = 0;
+    dnsHeader->ad = 0;
+    dnsHeader->cd = 0;
+    dnsHeader->rcode = 0;
+
+    dnsHeader->id = (unsigned short)42; /*Query id of 42*/
+    dnsHeader->q_count = 1; /*we have only 1 question */
+    dnsHeader->ans_count = 0;
+    dnsHeader->auth_count = 0;
+    dnsHeader->add_count = 0;
+}
+
+void fillQuery(uint8 * dnsQueryBuffer, unsigned char* host) {
+    uint8 *qname;
+    struct QUESTION *qinfo;
+    /*point to the query portion */
+    qname =(unsigned char*)&(dnsQueryBuffer[sizeof(struct DNS_HEADER)]);
+    ChangetoDnsNameFormat(qname,host);
+    qinfo =(struct QUESTION*)&(dnsQueryBuffer[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)]); /*fill it */
+    qinfo->qtype_h = 0; /* we are requesting the ipv4 address */
+    qinfo->qtype_l = 1; /* we are requesting the ipv4 address */
+    qinfo->qclass_h = 0; /* internet */
+    qinfo->qclass_l = 1; /* internet */
+}
+
+void sendQueryAndReceiveResponse(uint8 *buf, uint32 bufSize ,uint32 len) {
+    SOCKET s = 0;  /* Number of socket to use: 0-7 */
+    socket(s,Sn_MR_UDP,4224,0);
+    send_udp(s, buf, len);
+    read_udp(s, buf, bufSize);
+    close(s);
+}
+
+uint32 findIp(uint8 * buf) {
+    uint8 *answer, *qname;
+    uint32 ipAddress;
+    struct RES_RECORD dnsAnswer;
+    struct DNS_HEADER *dns = NULL;
+    int i,j,stop;
+
+    dns = (struct DNS_HEADER *)buf;
+    qname =(unsigned char*)&(buf[sizeof(struct DNS_HEADER)]);
+    answer=&(buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION)]);
+
+    /*printf("\nThe response contains : ");
+    printf("\n %d Questions.",dns->q_count);
+    printf("\n %d Answers.",dns->ans_count);
+    printf("\n %d Authoritative Servers.",dns->auth_count);
+    printf("\n %d Additional records.\n\n",dns->add_count);
+    */
+    /*reading answers */
+    stop=0;
+
+    for(i=0;i<dns->ans_count;i++)
+    {
+        unsigned short type;
+
+        dnsAnswer.name=ReadName(answer,buf,&stop);
+        answer = answer + stop;
+        dnsAnswer.resource = (struct R_DATA*)(answer);
+        answer = answer + sizeof(struct R_DATA);
+        type = readWord((unsigned char *)&(dnsAnswer.resource->type));
+        if( type == 1) /*if its an ipv4 address */
+        {
+            uint8 *ipAddrPtr = (uint8 *)&ipAddress;
+            for(j=0 ; j<4 ; j++) {
+                uint8 num = answer[j];
+                ipAddrPtr[j]=num;
+            }
+            return ipAddress;
+        }
+        else /* It's an alias name */
+        {
+            ReadName(answer,buf,&stop);
+            answer = answer + stop;
+        }
+    }
+    return (uint32)0;
+}
+
+uint32 ngethostbyname(char *host)
+{
+    uint8 *buf,*qname;
+    int i , j, pton_result;
+    uint32 ipv4address = 0;
+    struct DNS_HEADER *dns = NULL;
+
+	if(host[0]==0) {
+		return 0;
+	}
+
+    if(!initialized) {
+        initialize_cache();
+        initialized = 1;
+    }
+    /* First check if the host string is an ip address */
+    pton_result = inet_pton(AF_INET, host, (uint8 *)(&ipv4address));
+	if( pton_result ) {
+		return ipv4address;
+	}
+	if(host[strlen(host)-1]!='.') {
+		strcat(host,".");
+	}
+	/* Try cache */
+	ipv4address = get_from_cache(host);
+	if( ipv4address > 0) {
+		(void)io_sstrg((chanid_t)0,(timeout_t)0,"Cache hit\n",10);
+		return ipv4address;
+	}
+	/* Otherwise make a DNS query with the name */
+	/*Set the DNS structure to standard queries */
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"Cache miss\n",11);
+	buf = (uint8 *)malloc(UDP_MSG_BUF_SIZE);
+	dns = (struct DNS_HEADER *)buf;
+	qname =(unsigned char*)&(buf[sizeof(struct DNS_HEADER)]);
+	fillHeader(dns);
+	fillQuery(buf, (unsigned char *)host);
+	sendQueryAndReceiveResponse(buf, UDP_MSG_BUF_SIZE, (uint32)sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION));
+	ipv4address = findIp(buf);
+	free(buf);
+	store_in_cache(host, ipv4address);
+	return ipv4address;
+}
+
+void dump(uint8* buf, uint32 len) {
+    uint32 i = 0;
+    printf("@%d:",buf);
+    for(i = 0;i< len;i++) {
+        printf("%02x.",buf[i]);
+    }
+}

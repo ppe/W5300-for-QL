@@ -1,23 +1,38 @@
          include  'dev1_driver_in'
          include  'dev2_qdos1_in'
+;         include  'dev2_sms1_in'
+         include  'dev2_sms3_in'
          include  'dev2_sms17_in'
-         xdef     allocate_user_heap
-         xdef     deallocate_user_heap
+		xdef		allocate_user_heap
+		xdef		deallocate_user_heap
+		xdef		_init_driver
 ;
-         xref     w5300_init
-         xref     w5300_socket
-         xref     w5300_sendto_impl
-         xref     w5300_recvfrom_impl
-         xref     w5300_bytes_available
-         xref     socket_close
-         xref     create_dns_query_buffer
-         xref     socket_open_udp
-         xref     get_ip_from_dns_response
-         xref     read_ip_address
-         section  driver
+		xref		w5300_init
+		xref		w5300_socket
+		xref		w5300_connect
+		xref		w5300_send_impl
+		xref		w5300_sendto_impl
+		xref		w5300_recvfrom_impl
+		xref		w5300_recv_bytes_available
+		xref		w5300_send_bytes_available
+		xref		socket_close
+		xref		create_dns_query_buffer
+		xref		socket_open_udp
+		xref		get_ip_from_dns_response
+		xref		read_ip_address
+		xref		_nslookup_impl
+		section		driver
+_init_driver
+; Save regs that C68 needs
+		movem.l   a4-a5,-(a7)
 ; Get QDOS info to get sysvars address in a0
          moveq    #0,d0
          trap     #1
+; Example of how to call a C function
+;		 move.l   #42,-(a7)
+;		 lea      _foo,a4
+;		 jsr 	  (a4)
+;		 move.l   (a7)+,d1
 ; >>> Allocate storage for driver from common heap <<<
 ; This storage area will also include a user heap to be used for temporary storage needs
 ;
@@ -74,13 +89,16 @@
 sock_res_table_init_loop
          move.l   #SOCK_RT_STAT_FREE,(a1)+   ; Mark the socket as not reserved
          dbra     d0,sock_res_table_init_loop
+		movem.l 	(a7)+,a4-a5
          moveq    #0,d0
          rts
 ;
 oom_exit
          movea.l  (a7)+,a6
 direct_exit
+		movem.l 	(a7)+,a4-a5
          rts
+
 ; Reserve a socket
 ; a0: pointer to channel definition block, used as reservation identifier
 ; a3: pointer to driver definition block
@@ -251,170 +269,61 @@ NSLOOKUP
          lea      8(a3),a0
          cmpa.l   a0,a5
          beq.s    nslookup_num_params_ok
-         moveq    #ERR_BP,d0
+         moveq    #err.bp,d0
          rts
 nslookup_num_params_ok
          movea.w  sb.gtstr,a4
          jsr      (a4)
          tst.l    d0
          beq.s    nslookup_string_param_ok
-         moveq    #ERR_BP,d0
+         moveq    #err.bp,d0
          rts
 nslookup_string_param_ok
 ; Verify that the name is not longer than the maximum length of 254 characters == 255 octets DNS label encoded
          move.w   0(a6,a1.l),d2  ; Length of string
          cmpi.w   #DNS_MAX_NAME_LEN,d2
          bls.s    nslookup_check_null_name
-         moveq    #ERR_BP,d0
+         moveq    #err.bp,d0
          rts
 nslookup_check_null_name
          tst.w    d2
          bne.s    nslookup_param_ok       ; Don't accept an empty string
-         moveq    #ERR_BP,d0
+         moveq    #err.bp,d0
          rts
 nslookup_param_ok
-         link     a5,#-NSL_LOCAL_VARS_SIZE    ; Allocate space on stack for local variables, a5 becomes frame pointer (FP)
-         lea      2(a6,a1.l),a1              ; Pointer to start of string
-         move.l   a1,NSL_NAMEPTR(a5)         ; Save pointer in local frame
-         move.w   d2,NSL_W_NAMELEN(a5)       ; Save length of string
-; Open SCK_ channel to get driver info and netdb access
-         bsr      open_sck_channel
-         tst.b    d0
-         beq.s    nslookup_get_driver_info
-         unlk     a5
-         moveq    #ERR_NF,d0
-         rts
-nslookup_get_driver_info
-         move.l   a0,NSL_SCK_CHANNEL(a5)
-         bsr      get_driver_info            ; Set A1 = pointer to driver linkage block
-         tst.b    d0
-         beq.s    nslookup_driver_info_ok
-         move.b   #ERR_NF,-(a7)
-         bra      exit_close_sck
-nslookup_driver_info_ok
-         move.l   a1,NSL_DRVLBPTR(a5)        ; Save pointer to linkage block
-; Allocate temporary buffer for hostname on user heap
-         move.w   NSL_W_NAMELEN(a5),d1       ; Length of string from stack
-         addq.w   #1,d1                      ; Add one for the terminating null that will be appended
-         addq.w   #8,d1                      ; Add user heap block book keeping overhead
-         movea.l  NSL_DRVLBPTR(a5),a1
-         lea      QE_MEM_UH_PTR(a1),a0
-         bsr      allocate_user_heap         ; A1 = ptr to driver linkage block, d1 = required size
-; A0 now contains pointer to start of allocated block if return status == 0
-         tst.b    d0
-         beq.s    allocate_struct_hostent_buffer
-         move.b   #ERR_OM,-(a7)
-         bra      exit_close_sck
-allocate_struct_hostent_buffer
-         move.l   a0,NSL_NAMEBUFPTR(a5)
-         move.w   #STRUCT_HE_SIZE+HOSTENT_BUF_SIZE,d1          ; Size of temporary struct bufent and associated data
-         addq.w   #8,d1                                        ; Add user heap block book keeping overhead
-         movea.l  NSL_DRVLBPTR(a5),a1                          ; Pointer go start of linkage block
-         lea      QE_MEM_UH_PTR(a1),a0
-         bsr      allocate_user_heap                           ; A1 = ptr to driver linkage block, d1 = required size
-; A0 now contains pointer to start of allocated block if return status == 0
-         tst.b    d0
-         beq.s    copy_hostname_to_temp_buffer
-; struct hostent allocation failed, clean up and exit
-; Unallocate temp hostname buffer
-         move.b   #ERR_OM,-(a7)
-         bra      exit_unallocate_name_buf_close_sck
-; Copy the hostname to temporary buffer in the driver's linkage block
-; A0 -> user heap temp block
-; D2 == length of hostname string on maths stack
-; A2 -> start of hostname string on maths stack
-copy_hostname_to_temp_buffer
-         move.l   a0,NSL_STRUCT_HE_BUF(a5)
-         movea.l  NSL_NAMEBUFPTR(a5),a0
-         move.w   NSL_W_NAMELEN(a5),d0
-         movea.l  NSL_NAMEPTR(a5),a2
-         lea      8(a0),a4       ; First 8 bytes are allocation block book keeping info
-         subq.w   #1,d0          ; For dbra looping dn needs to be num_loops-1
-nslookup_name_copy_loop
-         move.b   (a2)+,(a4)+
-         dbra     d0,nslookup_name_copy_loop
-; Terminate the string with a C-style end of string marker
-         move.b   #0,(a4)
-; Call gethostbyname
-         moveq    #IP_GETHOSTBYNAME,d0
-         moveq    #50,d3                  ; Timeout, -1 == wait for as long as it takes
-         movea.l  NSL_SCK_CHANNEL(a5),a0
-         movea.l  NSL_NAMEBUFPTR(a5),a1
-         adda.l   #8,a1                      ; Skip over heap block book keeping info
-         movea.l  NSL_STRUCT_HE_BUF(a5),a2
-         adda.l   #8,a2                      ; Skip over heap block book keeping info
-         trap     #3
-         move.b   d0,-(a7)                   ; Save exit status
-         bne.s    nslookup_exit_deallocate
+         lea      0(a6,a1.l),a1              ; Pointer to start of (QL-style) string
+		movem.l 	d0-d3/a0-a5,-(a7)
+; Call C implementation
+		 move.l   a1,-(a7)
+		 lea      _nslookup_impl,a4
+		 jsr 	  (a4)
+		 move.l   d0,d4 					; Store result
+		 clr.l 		(a7)+ 					; Remove the parameter that was passed to function from stack
+		movem.l 	(a7)+,d0-d3/a0-a5
 ; Call succeeded, 
 ; Update math stack pointer, consume string from the stack, make sure we consume an even number of bytes
-         clr.l    d2
-         move.w   NSL_W_NAMELEN(a5),d2
+; d2 should still contain length of string
          btst     #0,d2
          beq.s    nslookup_update_math_stack
          addq.w   #1,d2          ; If string length was odd, add one to consume even number of bytes
 nslookup_update_math_stack
          addq.b   #2,d2          ; Account for the string length word on the stack
-         add.l    d2,BV_RIP(a6)
-; Call inet_ntoa to get a (C-style null-terminated) ascii version of ip address, use math stack as result buffer
-         moveq    #IP_INET_NTOA,d0
-         moveq    #0,d3                  ; Timeout, -1 == wait for as long as it takes
-         movea.l  NSL_SCK_CHANNEL(a5),a0
-         movea.l  STRUCT_HE_HADDRLIST(a2),a3       ; a3 now points to A table
-         movea.l  (a3),a1                          ; Pointer to first ip address in return struct
-         lea      NSL_IP_STRING_BUF(a5),a2
-         trap     #3
-         lea      NSL_IP_STRING_BUF(a5),a0
-         bsr      strlen
-         moveq    #0,d1
-         move.w   d0,d1
-         move.w   d0,d4          ; Save original
-         btst     #0,d1
-         beq.s    ipstrlen_even
-         addq.l   #1,d1
-ipstrlen_even
-         addq.l   #2,d1          ; Space for length word
-         move.l   d1,d5          ; Save stack allocation length, d1 is corrupted (on Minerva) when calling BV_CHRIX
+         add.l    d2,BV_RIP(a6)  ; update math stack pointer
+
+         moveq.l  #6,d1 		 ; How many bytes on math stack
          move.l   BV_RIP(a6),a1
          move.w   qa.resri,a4    ; Vector to make sure required space is available on the maths stack, d1==required bytes
          jsr      (a4)           ; No error status is returned on QDOS!
          move.l   BV_RIP(a6),a1  ; Load maths stack head pointer
-         suba.l   d5,a1
+         suba.l   #6,a1
          move.l   a1,BV_RIP(a6)
-         move.w   d4,0(a6,a1.l)
-         addq.l   #2,a1
-         subq.l   #2,d5
-         lea      NSL_IP_STRING_BUF(a5),a0
-nslookup_ip_string_copy_loop
-         move.w   (a0)+,d0
-         move.w   d0,0(a6,a1.l)
-         addq.l   #2,a1
-         subq.l   #2,d5
-         tst.l    d5
-         bne      nslookup_ip_string_copy_loop
-nslookup_exit_deallocate
-; Deallocate space reserved on the user heap
-         movea.l  NSL_STRUCT_HE_BUF(a5),a0
-         movea.l  NSL_DRVLBPTR(a5),a1
-         lea      QE_MEM_UH_PTR(a1),a1
-         bsr      deallocate_user_heap
-exit_unallocate_name_buf_close_sck
-         movea.l  NSL_NAMEBUFPTR(a5),a0
-         movea.l  NSL_DRVLBPTR(a5),a1
-         lea      QE_MEM_UH_PTR(a1),a1
-         bsr      deallocate_user_heap
-exit_close_sck
-         movea.l  NSL_SCK_CHANNEL(a5),a0
-         bsr      close_sck_channel
-exit_pop_and_unlink
-         clr.l    d0
-         move.b   (a7)+,d0
-         bne.s    exit_unlink
-         moveq    #1,d4                         ; Return a string
-exit_unlink
-         ext.w    d0
-         ext.l    d0
-         unlk     a5
+		 
+		 ; put result on math stack, can't return long so we have to do float trickery
+		 move.w 	#$81f,0(a6,a1.l) ; Exponent is offset by $81f so this means mantissa*2^(81f-81f)
+; Result is stored in 32-bit mantissa and can be printed with TK II function hex$(x,32)
+         move.l 	d4,2(a6,a1.l)
+         moveq    	#2,d4                         ; Return a floating point (==6 byte value)
+		 moveq 		#0,d0
          rts
 ;
 ; Allocate a new source port number for a socket
@@ -441,6 +350,8 @@ open_channel
          and.l    #$dfdfdfff,d2     ; Uppercase the first three characters
          cmpi.l   #'SCK_',d2
          beq.s    open_channel_alloc_mem
+         cmpi.l   #'TCP_',d2
+         beq.s    open_channel_alloc_mem
          cmpi.l   #'UDP_',d2
          beq.s    open_channel_alloc_mem
          bra.s    notme
@@ -466,17 +377,26 @@ open_channel_alloc_mem
 open_channel_open_socket
          move.b   d0,d1
          bsr      new_source_port               ; d0 <= source port
+		 cmp.l 		#'TCP_',d6
+		 beq.s 	  open_socket_use_tcp
          move.b   #SOCK_MODE_UDP,d2
+		 bra.s 	  open_socket_open_w5300
+open_socket_use_tcp
+         move.b   #SOCK_MODE_TCP,d2
+open_socket_open_w5300
          bsr      w5300_socket
 ; Initialize driver-specific storage in channel def block
 open_chan_block_init
          move.l   #0,CHAN_CONT_ADDR(a0)   ; Clear continuation address
+		 move.b   #0,IO_SEND_STARTED(a0)
+		 move.l 	#0,IO_BYTES_SENT(a0)
          moveq    #0,d0
          rts
 notme
          moveq    #-7,d0            ; "not found" == driver name does not match
          rts
 open_chan_sock_alloc_fail
+; TODO Check if we should deallocate all allocated memory at this stage?
          moveq    #ERR.IU,d0        ; "In use" == can't allocate socket because all of them are in use   
          rts
 ;
@@ -524,24 +444,165 @@ channel_IO_check_timedout
          bsr      release_and_close_sockets
 channel_IO_check_operation
 ; TODO Consider changing this into a vectored dispatch table
-         cmpi.b   #QE_IO_DRV_INFO,d0
-         beq.s    driver_info
-         cmpi.b   #IP_GETHOSTBYNAME,d0
-         beq      ip_gethostbyname_impl
-         cmpi.b   #IP_INET_ATON,d0
-         beq      ip_inet_aton_impl
-         cmpi.b   #IP_INET_NTOA,d0
-         beq      ip_inet_ntoa_impl
-         cmpi.b   #IP_SENDTO,d0
-         beq.s    ip_sendto_impl
-         cmpi.b   #IP_RECVFM,d0
-         beq.s    ip_recvfrom_impl
+		cmpi.b 		#IP_CONNECT,d0
+		beq.s 		ip_connect_impl
+		cmpi.b 		#io.sstrg,d0
+		beq.s 		ip_send_impl
+		cmpi.b 		#QE_IO_DRV_INFO,d0
+		beq.s 		driver_info
+		cmpi.b 		#IP_GETHOSTBYNAME,d0
+		beq 		ip_gethostbyname_impl
+		cmpi.b 		#IP_INET_ATON,d0
+		beq 		ip_inet_aton_impl
+		cmpi.b 		#IP_INET_NTOA,d0
+		beq 		ip_inet_ntoa_impl
+		cmpi.b 		#IP_SENDTO,d0
+		beq 		ip_sendto_impl
+		cmpi.b 		#IP_RECVFM,d0
+		beq 		ip_recvfrom_impl
+; When doing "INPUT #3,a$" both QDOS and Minerva first call the driver with TRAP #3,d0=0x0b (sd.chenq) to
+; get screen dimensions. Obviously , when there is no screen, we need to return an error code to signal
+; that io.fline should be used instead
+		cmpi.b 		#$0b,d0
+		bne.s 		io_exit
+; error code -15 (bad parameter) is used to signal to the calling code that the driver does not
+; support editing and that the caller should fall back to calling io.fline (TRAP #3, d0=2) instead
+		moveq 		#-15,d0
+		rts
+io_exit
          moveq    #0,d0
          rts
 driver_info
          movea.l  a3,a1
          moveq    #0,d0
          rts
+;
+;IP_CONNECT
+;
+;Provides connect(2) functionality
+;
+;  TCP: opens connection to host:port
+;  UDP: (re)sets peer address to host:port
+;
+;	Input
+;
+;	D0 = IP_CONNECT
+;	D1 = (int) namelen
+;	D3 = (short) timeout (-1)
+;    
+;	A0 = (chanid_t) Channel ID
+;	A2 = (struct  sockaddr  *) name;
+;
+;	Output
+;
+;	D0 = result
+;
+;  TCP: opens connection
+;  UDP: (re)sets peer address
+;
+;  regardless of the timeout specified, the socket will remain 
+;  blocked (any IO will timeout or be delayed) until the connection 
+;  buildup succeeded or failed.
+ip_connect_impl
+        lea    		CHAN_LOCAL_VARS(a0),a5
+        move.l 		a0,IO_CHANDB(a5)
+        move.l 		a1,IO_BUFFER(a5)
+        move.l 		a3,IO_DRVDB(a5)
+        move.l 		a6,IO_SYSVARS(a5)
+; TODO Check that address family == AF_INET
+        bsr    		find_socket_reservation
+        tst.b  		d0
+        blt.s  		ip_connect_no_socket
+        move.l 		d0,d1                   ; Socket number
+        move.l 		STRUCT_SA_DIP(a2),d2    ; Destination ip
+        move.w 		STRUCT_SA_DPORT(a2),d3  ; Destination port
+		bsr 		w5300_connect
+        moveq 		#0,d0
+        rts
+ip_connect_no_socket
+        moveq    #-1,d0
+        rts
+
+;		IP_SEND
+;
+;Provides send(2) functionality
+;
+;	Input
+;
+;	D0 = IP_SEND;
+;	D1 = (uint) flag;
+;	D2 = (int) buffer size;
+;	D3 = (short) timeout (should be -1)
+;
+;	A0 = (chanid_t) channel ID
+;	A1 = (void *) buffer address
+;
+;	Output
+;
+;	D0 = result
+;	D1 = (int) bytes written
+;
+;	A1 = buffer address + bytes written
+;
+ip_send_impl
+		tst.l 		d2
+		bne.s		ip_send_impl_start
+		moveq 		#0,d1
+		moveq		#err.nc,d0
+		rts
+ip_send_impl_start
+        lea 		CHAN_LOCAL_VARS(a0),a5
+		tst.w 		d3
+		bne.s 		ip_send_continuation_call
+		move.b 		#0,IO_SEND_STARTED(a5)		; Send operation has not started yet (w5300 layer will mark it as started)
+		move.l 		#0,IO_BYTES_SENT(a5)		; If this is a beginning of a new send operation then 0 bytes sent so far
+		move.l 		d2,IO_BYTES_TO_SEND(a5) 	; Save total number of bytes to send
+ip_send_continuation_call
+        move.l 		a0,IO_CHANDB(a5)
+        move.l 		a1,IO_BUFFER(a5)
+        move.l 		a3,IO_DRVDB(a5)
+        move.l 		a6,IO_SYSVARS(a5)
+        bsr    		find_socket_reservation
+        tst.b  		d0
+        blt.s  		ip_sendto_no_socket
+; Figure out number of bytes to send on this call
+; If send operation in progress then don't try to send any bytes
+; Otherwise find out bytes remaining by subtracting BYTES_SENT from BYTES_TO_SEND
+; If bytes remaining is less than available space in socket buffer then use bytes remaining
+; Otherwise send bytes equal to space available in socket buffer
+		clr.l 		d2
+		move.b 		IO_SEND_STARTED(a5),d7
+		bne.s 		send_impl_call_w5300
+		move.l 		IO_BYTES_TO_SEND(a5),d2
+		sub.l 		IO_BYTES_SENT(a5),d2
+        bsr 		w5300_send_bytes_available 	; Returns bytes available in socket send buffer in d1, preserves socket # in d0
+		cmp.l 		d2,d1
+		bcs.s 		ip_send_partial 	; If output size is smaller than bytes available in socket send buffer
+		bra.s 		send_impl_call_w5300
+ip_send_partial
+		move.l 		d1,d2 				; Send max bytes that fit in socket buffer
+send_impl_call_w5300
+		move.b 		d0,d1 					; Socket # to d1
+		movea.l 	IO_BUFFER(a5),a1
+; TODO Add offset for bytes already sent???
+		movea.l 	IO_CHANDB(a5),a0
+		bsr 		w5300_send_impl
+; Check return status and bytes sent and adjust call return status and channel variables
+; Always update number of bytes written so far
+; If the return status was err.nc then return that
+; If the return status was 0==ok then check if we have sent all bytes and return 0 or err.nc accordingly
+		add.l 		d1,IO_BYTES_SENT(a5)
+		cmpi.b 		#err.nc,d0
+		beq.s 		send_impl_return
+		move.l 		IO_BYTES_TO_SEND(a5),d7
+		cmp.l 		IO_BYTES_SENT(a5),d7
+		bhi.s 		send_impl_return_nc
+		moveq		#0,d0
+		rts
+send_impl_return_nc
+		moveq 		#err.nc,d0
+send_impl_return
+		rts
 ;
 ; IP_SENDTO
 ;
@@ -632,7 +693,7 @@ recvfrom_buffer_size_ok
          tst.b    d0
          bmi.s    recvfrom_no_socket_allocated
          move.w   d0,IO_SOCK_NUM(a5)
-         bsr      w5300_bytes_available      ; Overwrites d1 and a2, d1 = # bytes available
+         bsr      w5300_recv_bytes_available      ; Overwrites d1 and a2, d1 = # bytes available
          tst.w    d1
          bne.s    recvfrom_bytes_available
          moveq    #ERR.NC,d0                 ; Not complete, try again later
@@ -706,10 +767,11 @@ lookup_hostname
          bsr      socket_open_udp
          tst.b    d0
          beq.s    release_query_block
-         cmpi.b   #ERR_NC,d0
+         cmpi.b   #err.nc,d0
          bne.s    release_query_block
          move.l   a1,CHAN_CONT_ADDR(a0)
          bra.s    lookup_hostname_exit
+; TODO call w5300_sendto_impl
 ; Release the DNS query heap block
 release_query_block
          movea.l  IO_DNS_QUERY_BUF_PTR(a5),a0
@@ -910,15 +972,212 @@ byte_to_string_handle_ones
          add.b   #$30,d1
          move.b  d1,(a0)+
          rts
-KEYWORDS dc.w     2             ; No of procedures we are linking in
+; SuperBASIC procedure that connects a socket. Takes a channel, host and port as parameters
+TCP_CONN
+; Check that the procedure was called with three parameters
+        lea      24(a3),a0	; 8 bytes per parameter
+        cmpa.l   a0,a5
+        bne.s    tcpconn_bad_param
+; Load up first parameter definition word to d0 (a3 pointing to first parameter is relative to a6)
+		lea 		0(a3),a0
+		adda.l 	 	a6,a0
+		move.w 		(a0),d0
+; Check that the first paramater is preceded by a '#' character
+		andi.w 		#$0080,d0
+		beq.s 		tcpconn_bad_param
+        bra.s    tcpconn_chan_param_hash_set
+tcpconn_bad_param
+         moveq    #err.bp,d0
+         rts
+tcpconn_chan_param_hash_set
+		move.l 		a5,d5 				; Save A5 that points to last parameter
+		lea 		8(a3),a5
+        movea.w  sb.gtint,a4
+        move.l   BV_RIP(a6),a1
+        jsr      (a4)
+        beq.s    tcpconn_chan_param_ok
+        rts
+tcpconn_chan_param_ok
+; Channel number parameter is now on maths stack and A1 updated to point to it, save offset on stack
+		move.l	 	a1,-(a7)
+; Prepare to read next parameter which is the host name string, move start and end pointers by one param position
+		lea 		8(a5),a5
+		lea 		8(a3),a3
+        movea.w  	sb.gtstr,a4
+        move.l   	BV_RIP(a6),a1
+        jsr      	(a4)
+        beq.s    	tcpconn_hostname_param_ok
+		clr.l 		(a7)+ 				; ditch saved param offset
+        rts
+;		cmp.w 		#1,d3 				; Check only one integer was fetched
+;		beq.s 		tcpconn_numints_ok
+tcpconn_hostname_param_ok
+		move.l	 	a1,-(a7)
+		lea 		8(a5),a5
+		lea 		8(a3),a3
+        movea.w  	sb.gtint,a4
+        move.l   	BV_RIP(a6),a1
+        jsr      	(a4)
+        beq.s    	tcpconn_port_param_ok
+		adda.l 		#8,a7 				; ditch saved param offsets
+        rts
+tcpconn_port_param_ok
+		move.l	 	a1,-(a7)
+; All parameters are on the maths stack. Now check if the channel specified in param #1 is an open socket channel
+		; Get channel number from maths stack (it's now the third item on the stack)
+        move.l   	8(a7),a1 			; Param offset for channel #
+		adda.l 		a6,a1
+		move.w 		(a1),d0
+		; Find channel id based on channel number, chan # in d0
+		move.l 		bv_chbas(a6),a0
+		mulu 		#$28,d0
+		adda.l 		d0,a0
+		cmp.l 		bv_chp(a6),a0
+		bge.s 		chan_not_found
+		move.l 		0(a6,a0.l),d0
+		; d0 now contains channel id, if it's negative then channel is not open, otherwise store it on the stack
+		bmi.s 		chan_not_found
+		move.l 		d0,-(a7)
+
+		link 		a5,#-8				; addr family 2 bytes, port 2 bytes, address 4 bytes
+		move.w 		#AF_INET,-8(a5)
+		move.l 		16(a7),a1 			; Get port number from math stack using offset stored in stack
+		adda.l 		a6,a1
+		move.w 		(a1),d0
+		move.w 		d0,-6(a5)
+
+		; Do an nslookup on the name that was passed in
+		; Get a pointer to the hostname string on maths stack
+		move.l 		20(a7),a1
+		adda.l 		a6,a1
+		move.l 		a5,-(a7)
+; Call C implementation
+; !!!! Overwrites math stack with garbage for some reason !!!!
+		move.l 		a1,-(a7)
+		lea 		_nslookup_impl,a4
+		jsr 		(a4)
+		clr.l 		(a7)+ 				; Remove the parameter that was passed to function from stack
+		movea.l		(a7)+,a5
+; Verify the return value from nslookup_impl - check that an IP address was found for the hostname
+		tst.l 		d0
+		beq.s 		tcpconn_ip_not_found
+; TODO >>>>> set up a struct sockaddr and trap #3 to call "connect" on the channel
+		move.l 		d0,-4(a5) 			; IP address
+		move.l 		#IP_CONNECT,d0 		; Operation code
+		move.w 		#6,d1 				; Namelen (not used)
+		move.l 		#0,d3 				; Timeout
+		move.l 		12(a7),a0 			; Channel id
+		lea 		-8(a5),a2			; struct sockaddr *
+		move.l 		a5,-(a7)
+		trap 		#3
+		move.l 		(a7)+,a5
+		unlk 		a5
+		clr.l 		(a7)+ 				; clear channel id from stack
+		; Adjust math stack for a clean return
+		move.l 		8(a7),d1 			; Offset for first short int
+		addq.l 		#2,d1
+		move.l  	d1,bv_rip(a6)
+		adda.l 		#12,a7 				; ditch saved param offsets
+        moveq    	#0,d0
+        rts
+chan_not_found
+		adda.l 		#12,a7 				; ditch saved param offsets
+        moveq    	#err.no,d0
+        rts
+tcpconn_ip_not_found
+		unlk 		a5
+		adda.l 		#16,a7 				; ditch channel id and parameter pointers
+		moveq 		#err.nf,d0
+		rts
+; End TCP_CONN procedure
+; SuperBASIC procedure that closes a socket. Takes socket number as parameter
+TCP_CLS
+; Check that the procedure was called with one parameter
+         lea      8(a3),a0	; 8 bytes per parameter
+         cmpa.l   a0,a5
+         beq.s    tcpcls_num_params_ok
+         moveq    #err.bp,d0
+         rts
+tcpcls_num_params_ok
+         movea.w  sb.gtint,a4
+         move.l   BV_RIP(a6),a1
+         jsr      (a4)
+         tst.l    d0
+         beq.s    tcpcls_int_param_ok
+         moveq    #err.bp,d0
+         rts
+tcpcls_int_param_ok
+		cmp.w 		#1,d3 				; Check only one integer was fetched
+		beq.s 		tcpcls_numints_ok
+         moveq    #err.bp,d0
+         rts
+tcpcls_numints_ok
+		move.w 		0(a6,a1.l),d1 		; Get parameter into D1
+		addq.l 		#2,BV_RIP(a6) 		; and adjust stack accordingly
+		movem.l 	d0-d3/a0-a5,-(a7)
+; Call C implementation
+;		 move.l   a1,-(a7)
+;		 lea      _nslookup_impl,a4
+;		 jsr 	  (a4)
+;		 move.l   d0,d4 					; Store result
+;		 clr.l 		(a7)+ 					; Remove the parameter that was passed to function from stack
+		movem.l 	(a7)+,d0-d3/a0-a5
+; Call succeeded, 
+		 moveq 		#0,d0
+         rts
+; End TCP_CLS procedure
+; SuperBASIC function that creates a socket and returns its number
+TCP_SOCK
+; Check that the function was called with no parameters
+         cmpa.l   a3,a5
+         beq.s    tcpsock_num_params_ok
+         moveq    #err.bp,d0
+         rts
+tcpsock_num_params_ok
+		movem.l 	d0-d3/a0-a5,-(a7)
+; Call C implementation
+;		 move.l   a1,-(a7)
+;		 lea      _nslookup_impl,a4
+;		 jsr 	  (a4)
+;		 move.l   d0,d4 					; Store result
+;		 clr.l 		(a7)+ 					; Remove the parameter that was passed to function from stack
+		movem.l 	(a7)+,d0-d3/a0-a5
+; Call succeeded, 
+; Return number of socket that was reserved
+         moveq.l  #2,d1 		 ; Returning a word so need two bytes on math stack
+         move.l   BV_RIP(a6),a1
+         move.w   qa.resri,a4    ; Vector to make sure required space is available on the maths stack, d1==required bytes
+         jsr      (a4)           ; No error status is returned on QDOS!
+         move.l   BV_RIP(a6),a1  ; Load maths stack head pointer
+         suba.l   #2,a1
+         move.l   a1,BV_RIP(a6)
+		 
+         move.w 	#1,0(a6,a1.l)
+         moveq    	#3,d4                         ; Return a word integer
+		 moveq 		#0,d0
+         rts
+; End TCP_SOCK function
+KEYWORDS dc.w     3             ; No of procedures we are linking in
          dc.w     QE_UNLOAD-*   ; Pointer to code of first procedure
          dc.b     9,'QE_UNLOAD' ; Name of first procedure
+         dc.w     TCP_CLS-*     ; Close a TCP socket
+         dc.b     7,'TCP_CLS'
+         dc.w     TCP_CONN-*    ; Connect to remote host
+         dc.b     8,'TCP_CONN'
          dc.w     0             ; End marker for procedures
          dc.w     2             ; No of functions we are linking in
          dc.w     NSLOOKUP-*    ; Pointer to code of first function
-         dc.b     9,'NSLOOKUP$' ; Name of first function
+         dc.b     8,'NSLOOKUP'  ; Name of first function
+         dc.w     TCP_SOCK-*    ; Create a TCP socket and return its number
+         dc.b     8,'TCP_SOCK'
          dc.w     0             ; End marker for functions
-; Wireshark capture of DNS query response to www.lekane.net
+; TCP_SOCK
+; TCP_CLS
+; TCP_CONN
+; TCP_AVAIL
+; TCP_RDLN
+; TCP_SDLN
+ ; Wireshark capture of DNS query response to www.lekane.net
 DNS_DUMMY_RESPONSE
          dc.l     $00068180,$00010005,$00000000,$03777777,$066c656b,$616e6503,$6e657400,$00010001
          dc.l     $c00c0005,$00010000,$012b0015,$1270726f,$642d6575,$77312d64,$69616c6f,$677565c0

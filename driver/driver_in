@@ -1,9 +1,3 @@
-ERR_NC               equ      -1          ; Not complete
-ERR_OM               equ      -3          ; Out of memory
-ERR_NO               equ      -6          ; Not Open
-ERR_NF               equ      -7          ; Not Found
-ERR_BP               equ      -15         ; Bad parameter
-BV_RIP               equ      $58         ; Offset to maths stack address store in basic variables
 AF_INET              equ      2           ; Address family INET in netdb operations
 AF_INET_ADDR_LEN     equ      4           ; # of bytes per address in AF_INET family
 HEAP_SIZE            equ      $2000       ; 8k total memory for the driver
@@ -14,8 +8,10 @@ IP_MAX_STRINGLEN     equ      16          ; Max length of null-terminated ip add
 NUM_SOCKETS          equ      8           ; Total of 8 sockets on the card
 SOCK_RT_STAT_FREE    equ      $FFFFFFFF   ; Reservation table entry to signify that a socket is not reserved
 ; Socket functionality d0 values for trap #3
+IP_SEND 			 equ 	  $51
 IP_SENDTO            equ      $52
 IP_RECVFM            equ      $54
+IP_CONNECT			 equ 	  $59
 ; Netdb functions: d0 values for trap #3 calls
 IP_GETHOSTBYNAME     equ      $5E
 IP_INET_ATON         equ      $72
@@ -37,6 +33,9 @@ IO_PARAM_BLOCK_PTR   equ      16          ; Recvfrom parameter block pointer (lo
 ;IO_SOCK_NUM          equ      20          ; Word size
 IO_FLAGS             equ      22          ; Flag long word passed in d1
 IO_BUFSIZ            equ      26          ; Size of receive buffer
+IO_SEND_STARTED 	equ 		30 			; 0 on first call to send, set to 1 until completion of send operation
+IO_BYTES_SENT	 	equ 		32 			; Total number of bytes sent so far
+IO_BYTES_TO_SEND 	equ			36
 
 ;
 QE_IO_DRV_INFO       equ      $7E

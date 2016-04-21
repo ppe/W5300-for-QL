@@ -1,0 +1,10 @@
+ex ld;'-odrv_bin -malms -screspr_o driver_rel resolv_rel w5300_rel parser_rel foo_rel test_o'
+
+ex cc;'-V -O -ms -s crespr_o -o hello foo_o hello.c'
+
+# By default c68 uses A6 as the frame pointer which messes up e.g. sb.init call which expects
+# a valid SuperBASIC A6 reference
+# N.B. This applies when calling separately compiled asm modules from c68 generated code
+# Also, be sure to save a4-a5 in asm code you are calling
+ex cc;'-c -O -regframe=a4 hello_c'
+

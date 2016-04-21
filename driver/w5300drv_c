@@ -1,0 +1,39 @@
+#include <qdos.h>
+#include "resolv_h"
+
+/* extern int c_test(); */
+extern void init_driver();
+
+char *_endmsg=NULL;
+int (*_cmdparams)() = NULL;
+long (*_cmdchannels)() = NULL;
+void (*_consetup)() = NULL;
+int (*_cmdwildcard)() = NULL;
+long (*_stackchannels)() = NULL;
+
+unsigned long nslookup_impl(QLSTR_t *name) {
+	char namebuf[256];
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,name->qs_str,name->qs_strlen);
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"\n",1);
+	qlstr_to_c(namebuf, name);
+	return ngethostbyname(namebuf);
+}
+
+void print_msg() {
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"W5300 driver\n",13);
+}
+
+int main(int ac, char **av) {
+	init_driver();
+	print_msg();
+	return 0;
+}
+/*
+unsigned int foo(unsigned int bar) {
+	(void)io_sstrg((chanid_t)0,(timeout_t)0,"foo loading\n",12);
+*/
+/*	return bar+c_test(); */
+/* 	return bar+1; */
+/*
+}
+*/

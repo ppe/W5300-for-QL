@@ -1,4 +1,7 @@
+input LIB_asmstart_o
 input driver_rel
 input resolv_rel
 input w5300_rel
 input parser_rel
+input foo_rel
+library test_o
