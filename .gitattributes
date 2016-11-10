@@ -1,2 +1,6 @@
 text eol=lf
 
+*_asm linguist-language=Assembly
+*_c linguist-language=C
+*_h linguist-language=C
+*_in linguist-language=Assembly
